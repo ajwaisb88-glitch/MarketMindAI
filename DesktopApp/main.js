@@ -23,7 +23,13 @@ function createWindow() {
     },
   });
 
-  win.loadFile('index.html');
+  const isDev = !app.isPackaged;
+  if (isDev) {
+    // Dev: load old UMD renderer until Vite dev server is running
+    win.loadFile('index.html');
+  } else {
+    win.loadFile(path.join(__dirname, 'dist', 'ui', 'index.html'));
+  }
 
   // Check for updates after window loads (packaged builds only)
   if (autoUpdater && app.isPackaged) {
