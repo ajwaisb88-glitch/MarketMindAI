@@ -65,8 +65,8 @@ def _predict_from_prices(closes: np.ndarray) -> dict:
     if len(closes) < 26:
         return {"prediction": "neutral", "confidence": 0.5, "note": "insufficient data"}
 
-    sma_fast = closes[-10:].mean()
-    sma_slow = closes[-26:].mean()
+    sma_fast = float(closes[-10:].mean())
+    sma_slow = float(closes[-26:].mean())
     rsi = _compute_rsi(closes)
     last = float(closes[-1])
     pct_change_5d = float((closes[-1] - closes[-6]) / closes[-6] * 100) if len(closes) >= 6 else 0.0
@@ -109,7 +109,12 @@ def _fetch_closes(ticker: str, period: str = "3mo") -> Optional[np.ndarray]:
         data = yf.download(ticker, period=period, progress=False, auto_adjust=True)
         if data.empty:
             return None
-        return data["Close"].dropna().to_numpy(dtype=float)
+        close = data["Close"]
+        # yfinance >= 0.2.31 returns multi-level columns; flatten to 1-D
+        if hasattr(close, "columns"):
+            close = close.iloc[:, 0]
+        arr = close.dropna().to_numpy(dtype=float).ravel()
+        return arr if arr.ndim == 1 and len(arr) > 0 else None
     except Exception as exc:  # noqa: BLE001
         logger.warning("yfinance fetch failed for %s: %s", ticker, exc)
         return None
