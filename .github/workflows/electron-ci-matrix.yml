@@ -77,17 +77,34 @@ jobs:
         if: matrix.os != 'windows-latest'
         working-directory: Backend
         run: |
-          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../backend.log 2>&1 &
+          echo $! > ../backend.pid
 
       - name: Start backend (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         working-directory: Backend
         run: |
-          Start-Process -NoNewWindow -FilePath python -ArgumentList '-m','uvicorn','app.main:app','--host','127.0.0.1','--port','8000'
+          $process = Start-Process -FilePath python `
+            -ArgumentList '-m','uvicorn','app.main:app','--host','127.0.0.1','--port','8000' `
+            -WorkingDirectory $PWD `
+            -RedirectStandardOutput "$env:GITHUB_WORKSPACE\backend.log" `
+            -RedirectStandardError "$env:GITHUB_WORKSPACE\backend-error.log" `
+            -PassThru
+          $process.Id | Set-Content "$env:GITHUB_WORKSPACE\backend.pid"
+          Write-Output "Started backend process $($process.Id)"
 
       - name: Run smoke test (Node)
         run: node tools/smoke_test.js
+
+      - name: Show backend logs on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Output 'Backend output:'
+          if (Test-Path backend.log) { Get-Content backend.log } else { Write-Output 'No backend.log found' }
+          Write-Output 'Backend error output:'
+          if (Test-Path backend-error.log) { Get-Content backend-error.log } else { Write-Output 'No backend-error.log found' }
 
       - name: Run postinstall helper (verify)
         working-directory: DesktopApp
