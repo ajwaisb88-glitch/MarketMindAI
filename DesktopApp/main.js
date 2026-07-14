@@ -1,5 +1,33 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
+
+const LOCAL_API_URL = 'http://127.0.0.1:8000';
+let backendProcess = null;
+
+function backendExecutablePath() {
+  const name = process.platform === 'win32' ? 'marketmind-backend.exe' : 'marketmind-backend';
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'backend', name)
+    : null;
+}
+
+function startBundledBackend() {
+  const executable = backendExecutablePath();
+  if (!executable || backendProcess) return;
+
+  backendProcess = spawn(executable, ['--host', '127.0.0.1', '--port', '8000'], {
+    windowsHide: true,
+    stdio: 'ignore',
+  });
+  backendProcess.on('error', (error) => console.error('Unable to start MarketMind backend:', error));
+  backendProcess.on('exit', () => { backendProcess = null; });
+}
+
+function stopBundledBackend() {
+  if (backendProcess && !backendProcess.killed) backendProcess.kill();
+  backendProcess = null;
+}
 
 // Auto-updater — only active in packaged builds
 let autoUpdater;
@@ -63,7 +91,14 @@ function createWindow() {
   }
 }
 
+ipcMain.handle('marketmind:get-backend-info', () => ({
+  localApiUrl: LOCAL_API_URL,
+  bundled: app.isPackaged,
+  running: Boolean(backendProcess && !backendProcess.killed),
+}));
+
 app.whenReady().then(() => {
+  startBundledBackend();
   createWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -73,4 +108,6 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+app.on('before-quit', stopBundledBackend);
 

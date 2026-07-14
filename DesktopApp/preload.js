@@ -1,3 +1,5 @@
-window.addEventListener('DOMContentLoaded', () => {
-  // Expose simple APIs here as needed
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('marketmind', {
+  getBackendInfo: () => ipcRenderer.invoke('marketmind:get-backend-info'),
 });

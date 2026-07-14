@@ -163,6 +163,15 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install backend build dependencies
+        working-directory: Backend
+        run: pip install -r requirements.txt
+
       - name: Clear electron-builder cache
         shell: pwsh
         run: |
@@ -180,6 +189,10 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: npm run build:win
+
+      - name: Verify packaged backend and installer
+        working-directory: DesktopApp
+        run: npm run verify:package
 
       - name: Upload Windows installer
         if: always()

@@ -19,6 +19,11 @@ yarn.lock
 __pycache__/
 *.py[cod]
 *.pyo
+Backend/build/
+Backend/*.spec
+DesktopApp/backend/
+DesktopApp/dist/
+DesktopApp/dist-build/
 
 # Misc
 .DS_Store
