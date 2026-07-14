@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 
-const API = 'http://127.0.0.1:8000';
+const LOCAL_API = 'http://127.0.0.1:8000';
+const API_SETTINGS_KEY = 'mm_api_settings_v1';
 const HISTORY_KEY = 'mm_history_v2';
 const MAX_HISTORY = 100;
 
@@ -14,6 +15,13 @@ function loadHistory() {
 
 function saveHistory(h) {
   try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h)); } catch {}
+}
+
+function loadApiSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(API_SETTINGS_KEY) || '{}');
+    return { useLocal: saved.useLocal !== false, remoteUrl: saved.remoteUrl || '' };
+  } catch { return { useLocal: true, remoteUrl: '' }; }
 }
 
 function Badge({ prediction }) {
@@ -45,7 +53,13 @@ export default function App() {
   const [intervalSec, setIntervalSec] = useState(30);
   const [history, setHistory] = useState(loadHistory);
   const [backendStatus, setBackendStatus] = useState('unknown');
+  const [apiSettings, setApiSettings] = useState(loadApiSettings);
+  const [showSettings, setShowSettings] = useState(false);
+  const [backendInfo, setBackendInfo] = useState(null);
   const pollRef = useRef(null);
+  const apiBase = apiSettings.useLocal || !apiSettings.remoteUrl.trim()
+    ? LOCAL_API
+    : apiSettings.remoteUrl.trim().replace(/\/$/, '');
 
   const addToHistory = useCallback((entry) => {
     setHistory((prev) => {
@@ -59,7 +73,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/predict?asset=${a}`);
+      const res = await fetch(`${apiBase}/predict?asset=${a}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setResult(data);
@@ -69,14 +83,30 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [addToHistory]);
+  }, [addToHistory, apiBase]);
 
-  // Check backend health
-  useEffect(() => {
-    fetch(`${API}/health`)
+  const refreshBackendHealth = useCallback(() => {
+    setBackendStatus('checking');
+    fetch(`${apiBase}/health`)
       .then(r => r.ok ? setBackendStatus('online') : setBackendStatus('error'))
       .catch(() => setBackendStatus('offline'));
+  }, [apiBase]);
+
+  // The packaged backend can take a few seconds to start, so keep checking it.
+  useEffect(() => {
+    refreshBackendHealth();
+    const timer = setInterval(refreshBackendHealth, 5000);
+    return () => clearInterval(timer);
+  }, [refreshBackendHealth]);
+
+  useEffect(() => {
+    window.marketmind?.getBackendInfo?.().then(setBackendInfo).catch(() => {});
   }, []);
+
+  const saveApiSettings = (next) => {
+    setApiSettings(next);
+    localStorage.setItem(API_SETTINGS_KEY, JSON.stringify(next));
+  };
 
   // Auto-poll
   useEffect(() => {
@@ -100,7 +130,7 @@ export default function App() {
     a.click();
   };
 
-  const statusColor = { online: '#3fb950', offline: '#f85149', error: '#e3b341', unknown: '#8b949e' }[backendStatus];
+  const statusColor = { online: '#3fb950', offline: '#f85149', error: '#e3b341', checking: '#e3b341', unknown: '#8b949e' }[backendStatus];
 
   return (
     <div className="app">
@@ -112,9 +142,32 @@ export default function App() {
         <div className="backend-badge" style={{ borderColor: statusColor, color: statusColor }}>
           ● Backend {backendStatus}
         </div>
+        <button className="btn-sm" onClick={() => setShowSettings((visible) => !visible)}>Settings</button>
       </header>
 
       <main className="main">
+        {showSettings && (
+          <section className="card settings">
+            <h3>API connection</h3>
+            <label className="settings-option">
+              <input type="radio" checked={apiSettings.useLocal}
+                onChange={() => saveApiSettings({ ...apiSettings, useLocal: true })} />
+              Use bundled local API ({LOCAL_API})
+            </label>
+            <label className="settings-option">
+              <input type="radio" checked={!apiSettings.useLocal}
+                onChange={() => saveApiSettings({ ...apiSettings, useLocal: false })} />
+              Use remote API
+            </label>
+            {!apiSettings.useLocal && (
+              <input aria-label="Remote API URL" placeholder="https://api.example.com"
+                value={apiSettings.remoteUrl}
+                onChange={(event) => saveApiSettings({ ...apiSettings, remoteUrl: event.target.value })} />
+            )}
+            <div className="sub">Active endpoint: {apiBase}</div>
+            {backendInfo?.bundled && <div className="sub">Bundled API: {backendInfo.running ? 'started' : 'starting'}</div>}
+          </section>
+        )}
         {/* ── Controls ── */}
         <section className="card controls">
           <div className="row">

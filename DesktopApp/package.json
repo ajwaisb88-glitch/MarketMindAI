@@ -7,13 +7,19 @@
     "start": "electron .",
     "dev": "vite",
     "ui:build": "vite build",
+    "backend:build": "node ./scripts/package-backend.js",
     "postinstall": "node ./scripts/postinstall-electron.js",
-    "build": "npm run ui:build && electron-builder",
-    "build:win": "npm run ui:build && electron-builder --win",
-    "build:mac": "npm run ui:build && electron-builder --mac",
-    "build:linux": "npm run ui:build && electron-builder --linux"
+    "build": "npm run ui:build && npm run backend:build && electron-builder",
+    "build:win": "npm run ui:build && npm run backend:build && electron-builder --win",
+    "build:mac": "npm run ui:build && npm run backend:build && electron-builder --mac",
+    "build:linux": "npm run ui:build && npm run backend:build && electron-builder --linux",
+    "verify:package": "node ./scripts/verify-packaged-build.js"
   },
-  "keywords": ["marketmind", "electron", "react"],
+  "keywords": [
+    "marketmind",
+    "electron",
+    "react"
+  ],
   "author": "MarketMind AI",
   "license": "MIT",
   "devDependencies": {
@@ -28,7 +34,8 @@
     "react-dom": "^18.3.1"
   },
   "allowScripts": {
-    "electron@43.1.0": true
+    "electron@43.1.0": true,
+    "esbuild@0.21.5": true
   },
   "build": {
     "appId": "ai.marketmind.desktop",
@@ -43,9 +50,30 @@
       "scripts/**",
       "package.json"
     ],
-    "win": { "target": ["nsis"] },
-    "mac": { "target": ["dmg"] },
-    "linux": { "target": ["AppImage"] },
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    },
     "publish": {
       "provider": "github",
       "owner": "ajwaisb88-glitch",

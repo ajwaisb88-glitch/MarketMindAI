@@ -1,10 +1,20 @@
 # MarketMind AI — Desktop (Electron + React)
 
-This is a minimal Electron + React starter using UMD React builds for rapid prototyping.
+This is a Vite + React Electron desktop application with a bundled FastAPI backend.
 
 Note: This workspace has been aligned to use Electron v43 (local binaries placed in `node_modules/electron/dist`).
 
-Quick start (after installing dependencies):
+Development
+-----------
+
+Start the backend separately, then start Electron:
+
+```powershell
+cd Backend
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal:
 
 ```powershell
 cd DesktopApp
@@ -12,9 +22,22 @@ npm install
 npm run start
 ```
 
-Notes:
-- For production and real development, replace the UMD renderer with a bundler (Vite/webpack) and use a proper React app structure.
-- `preload.js` is present for secure IPC bridging when needed.
+Production package
+------------------
+
+`npm run build:win` builds the React UI, creates a single-file FastAPI executable with PyInstaller, and packages both into the Windows installer. The installed application starts the local API automatically on `127.0.0.1:8000` and stops it when the app exits.
+
+Use **Settings** in the desktop app to retain a remote API URL instead of the bundled local service.
+
+Release workflow
+----------------
+
+Pushing a version tag such as `v0.2.1` runs `.github/workflows/release.yml`, publishes the installer to a GitHub Release, and uploads a workflow-artifact backup. To sign Windows installers, configure these repository secrets:
+
+- `WINDOWS_CERTIFICATE`: a base64-encoded `.pfx` certificate.
+- `WINDOWS_CERTIFICATE_PASSWORD`: its password.
+
+Without the certificate secret, the workflow publishes an unsigned installer.
 
 Reproducible Electron install
 ----------------------------

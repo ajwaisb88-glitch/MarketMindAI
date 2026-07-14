@@ -37,6 +37,11 @@ select:focus, input:focus { border-color: var(--accent); }
 
 .error { color: var(--bear); border-color: var(--bear); }
 
+.settings { display: flex; flex-direction: column; gap: 10px; }
+.settings h3 { font-size: 15px; }
+.settings-option { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.settings input[type=text], .settings input[aria-label] { width: 100%; }
+
 .result { display: flex; flex-direction: column; gap: 14px; }
 .result-row { display: flex; align-items: center; gap: 14px; }
 .result-label { width: 120px; color: var(--sub); flex-shrink: 0; }
