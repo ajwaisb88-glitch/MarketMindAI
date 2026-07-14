@@ -1,23 +1,55 @@
 {
   "name": "marketmind-desktop",
-  "version": "0.1.0",
-  "description": "MarketMind AI - Electron + React prototype",
+  "version": "0.2.0",
+  "description": "MarketMind AI - Electron + React desktop app",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "postinstall": "node ./scripts/postinstall-electron.js"
+    "dev": "vite",
+    "ui:build": "vite build",
+    "postinstall": "node ./scripts/postinstall-electron.js",
+    "build": "npm run ui:build && electron-builder",
+    "build:win": "npm run ui:build && electron-builder --win",
+    "build:mac": "npm run ui:build && electron-builder --mac",
+    "build:linux": "npm run ui:build && electron-builder --linux"
   },
-  "keywords": [
-    "marketmind",
-    "electron",
-    "react"
-  ],
-  "author": "",
+  "keywords": ["marketmind", "electron", "react"],
+  "author": "MarketMind AI",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^43.1.0"
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^43.1.0",
+    "electron-builder": "^25.1.8",
+    "vite": "^5.4.2"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "allowScripts": {
     "electron@43.1.0": true
+  },
+  "build": {
+    "appId": "ai.marketmind.desktop",
+    "productName": "MarketMind AI",
+    "directories": {
+      "output": "dist-build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "dist/**",
+      "scripts/**",
+      "package.json"
+    ],
+    "win": { "target": ["nsis"] },
+    "mac": { "target": ["dmg"] },
+    "linux": { "target": ["AppImage"] },
+    "publish": {
+      "provider": "github",
+      "owner": "ajwaisb88-glitch",
+      "repo": "MarketMindAI"
+    }
   }
 }
