@@ -135,5 +135,11 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path DesktopApp\.electron_dist_cache | Out-Null
-          Copy-Item -Path DesktopApp\node_modules\electron\dist\* -Destination DesktopApp\.electron_dist_cache -Recurse -Force || Write-Output 'copy-failed'
+          $source = 'DesktopApp\node_modules\electron\dist'
+          if (Test-Path $source) {
+            New-Item -ItemType Directory -Force -Path DesktopApp\.electron_dist_cache | Out-Null
+            Copy-Item -Path "$source\*" -Destination DesktopApp\.electron_dist_cache -Recurse -Force
+            Write-Output 'Saved Electron dist to cache folder'
+          } else {
+            Write-Output 'Electron dist was not available; skipping cache save'
+          }
