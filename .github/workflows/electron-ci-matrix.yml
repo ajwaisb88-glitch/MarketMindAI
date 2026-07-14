@@ -1,0 +1,110 @@
+name: Electron CI (matrix)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Matrix build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore electron dist cache
+        uses: actions/cache@v4
+        with:
+          path: DesktopApp/.electron_dist_cache
+          key: electron-dist-${{ matrix.os }}-v43.1.0
+
+      - name: Prepopulate electron dist (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          if [ -d DesktopApp/.electron_dist_cache ]; then
+            mkdir -p DesktopApp/node_modules/electron/dist
+            cp -R DesktopApp/.electron_dist_cache/* DesktopApp/node_modules/electron/dist/ || true
+            echo "Copied cached electron dist"
+          else
+            echo "No cached electron dist found"
+          fi
+
+      - name: Prepopulate electron dist (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          if (Test-Path DesktopApp/.electron_dist_cache) {
+            New-Item -ItemType Directory -Force -Path DesktopApp\node_modules\electron\dist | Out-Null
+            Copy-Item -Path DesktopApp\.electron_dist_cache\* -Destination DesktopApp\node_modules\electron\dist -Recurse -Force
+            Write-Output 'Copied cached electron dist'
+          } else {
+            Write-Output 'No cached electron dist found'
+          }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install DesktopApp dependencies
+        working-directory: DesktopApp
+        run: npm ci
+
+      - name: Setup Python (for backend)
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install backend deps (Unix)
+        if: matrix.os != 'windows-latest'
+        working-directory: Backend
+        run: |
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; else pip install fastapi uvicorn; fi
+
+      - name: Install backend deps (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        working-directory: Backend
+        run: |
+          if (Test-Path requirements.txt) { pip install -r requirements.txt } else { pip install fastapi uvicorn }
+
+      - name: Start backend (Unix)
+        if: matrix.os != 'windows-latest'
+        working-directory: Backend
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+
+      - name: Start backend (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        working-directory: Backend
+        run: |
+          Start-Process -NoNewWindow -FilePath python -ArgumentList '-m','uvicorn','app.main:app','--host','127.0.0.1','--port','8000'
+
+      - name: Run smoke test (Node)
+        run: node tools/smoke_test.js
+
+      - name: Run postinstall helper (verify)
+        working-directory: DesktopApp
+        run: |
+          node ./scripts/postinstall-electron.js || true
+          echo "List electron dist files:" 
+          ls -la node_modules/electron/dist || true
+
+      - name: Save electron dist to cache folder (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir -p DesktopApp/.electron_dist_cache
+          cp -R DesktopApp/node_modules/electron/dist/* DesktopApp/.electron_dist_cache/ || true
+
+      - name: Save electron dist to cache folder (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path DesktopApp\.electron_dist_cache | Out-Null
+          Copy-Item -Path DesktopApp\node_modules\electron\dist\* -Destination DesktopApp\.electron_dist_cache -Recurse -Force || Write-Output 'copy-failed'

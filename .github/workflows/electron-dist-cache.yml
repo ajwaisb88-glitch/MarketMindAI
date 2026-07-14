@@ -1,0 +1,49 @@
+name: Electron dist cache
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Restore/cache Electron dist and install
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore electron dist cache
+        uses: actions/cache@v4
+        with:
+          path: DesktopApp/.electron_dist_cache
+          key: electron-dist-${{ runner.os }}-v43.1.0
+
+      - name: Prepopulate electron dist if cached
+        run: |
+          if [ -d DesktopApp/.electron_dist_cache ]; then
+            mkdir -p DesktopApp/node_modules/electron
+            cp -R DesktopApp/.electron_dist_cache DesktopApp/node_modules/electron/dist
+            echo "Copied cached electron dist"
+          else
+            echo "No cached electron dist found"
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install DesktopApp dependencies
+        working-directory: DesktopApp
+        run: |
+          npm ci
+
+      - name: Save electron dist to cache folder
+        run: |
+          mkdir -p DesktopApp/.electron_dist_cache
+          cp -R DesktopApp/node_modules/electron/dist/* DesktopApp/.electron_dist_cache/ || true
+
+      - name: Show cache contents
+        run: ls -la DesktopApp/.electron_dist_cache || true

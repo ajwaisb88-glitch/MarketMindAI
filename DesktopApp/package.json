@@ -1,0 +1,23 @@
+{
+  "name": "marketmind-desktop",
+  "version": "0.1.0",
+  "description": "MarketMind AI - Electron + React prototype",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "node ./scripts/postinstall-electron.js"
+  },
+  "keywords": [
+    "marketmind",
+    "electron",
+    "react"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^43.1.0"
+  },
+  "allowScripts": {
+    "electron@43.1.0": true
+  }
+}
