@@ -53,7 +53,7 @@ jobs:
 
       - name: Install DesktopApp dependencies
         working-directory: DesktopApp
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Setup Python (for backend)
         uses: actions/setup-python@v4

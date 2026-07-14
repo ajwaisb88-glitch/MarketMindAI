@@ -38,7 +38,7 @@ jobs:
       - name: Install DesktopApp dependencies
         working-directory: DesktopApp
         run: |
-          npm ci
+          npm install --no-audit --no-fund
 
       - name: Save electron dist to cache folder
         run: |

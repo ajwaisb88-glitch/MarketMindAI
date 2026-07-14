@@ -20,7 +20,7 @@ The helper works on Windows, Linux, and macOS.
 
 1. Restores the `DesktopApp/.electron_dist_cache` cache on Ubuntu.
 2. Pre-populates Electron's `dist` directory when cache contents exist.
-3. Runs `npm ci` in `DesktopApp`.
+3. Runs `npm install --no-audit --no-fund` in `DesktopApp`.
 4. Saves the Electron distribution for later workflow runs.
 
 ### Multi-platform CI matrix
