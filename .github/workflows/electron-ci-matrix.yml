@@ -108,12 +108,22 @@ jobs:
           Write-Output 'Backend error output:'
           if (Test-Path backend-error.log) { Get-Content backend-error.log } else { Write-Output 'No backend-error.log found' }
 
-      - name: Run postinstall helper (verify)
+      - name: Run postinstall helper (verify, Unix)
+        if: matrix.os != 'windows-latest'
         working-directory: DesktopApp
         run: |
-          node ./scripts/postinstall-electron.js || true
-          echo "List electron dist files:" 
+          node ./scripts/postinstall-electron.js
+          echo "List electron dist files:"
           ls -la node_modules/electron/dist || true
+
+      - name: Run postinstall helper (verify, Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        working-directory: DesktopApp
+        run: |
+          node .\scripts\postinstall-electron.js
+          Write-Output 'List electron dist files:'
+          Get-ChildItem node_modules\electron\dist -Force -ErrorAction SilentlyContinue
 
       - name: Save electron dist to cache folder (Unix)
         if: matrix.os != 'windows-latest'
