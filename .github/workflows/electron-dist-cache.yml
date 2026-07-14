@@ -35,6 +35,13 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Clear electron-builder cache (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Output "Removing electron-builder cache if present: $env:LOCALAPPDATA\electron-builder\Cache"
+          if (Test-Path "$env:LOCALAPPDATA\electron-builder\Cache") { Remove-Item -LiteralPath "$env:LOCALAPPDATA\electron-builder\Cache" -Recurse -Force -ErrorAction SilentlyContinue; Write-Output 'Removed existing electron-builder cache' } else { Write-Output 'No electron-builder cache present' }
+
       - name: Install DesktopApp dependencies
         working-directory: DesktopApp
         run: |
