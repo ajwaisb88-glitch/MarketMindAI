@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+numpy
+pandas
+yfinance
+scikit-learn

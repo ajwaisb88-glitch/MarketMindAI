@@ -1,0 +1,22 @@
+/* ── Global reset & theme ─────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --border: #30363d;
+  --accent: #58a6ff;
+  --bull: #3fb950;
+  --bear: #f85149;
+  --neutral: #8b949e;
+  --text: #e6edf3;
+  --sub: #8b949e;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+body { min-height: 100vh; }
+
+#root { display: flex; flex-direction: column; min-height: 100vh; }

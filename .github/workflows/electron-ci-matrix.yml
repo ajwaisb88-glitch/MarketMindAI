@@ -51,9 +51,16 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Clear electron-builder cache (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Write-Output "Removing electron-builder cache if present: $env:LOCALAPPDATA\electron-builder\Cache"
+          if (Test-Path "$env:LOCALAPPDATA\electron-builder\Cache") { Remove-Item -LiteralPath "$env:LOCALAPPDATA\electron-builder\Cache" -Recurse -Force -ErrorAction SilentlyContinue; Write-Output 'Removed existing electron-builder cache' } else { Write-Output 'No electron-builder cache present' }
+
       - name: Install DesktopApp dependencies
         working-directory: DesktopApp
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Setup Python (for backend)
         uses: actions/setup-python@v4
@@ -77,24 +84,53 @@ jobs:
         if: matrix.os != 'windows-latest'
         working-directory: Backend
         run: |
-          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > ../backend.log 2>&1 &
+          echo $! > ../backend.pid
 
       - name: Start backend (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         working-directory: Backend
         run: |
-          Start-Process -NoNewWindow -FilePath python -ArgumentList '-m','uvicorn','app.main:app','--host','127.0.0.1','--port','8000'
+          $process = Start-Process -FilePath python `
+            -ArgumentList '-m','uvicorn','app.main:app','--host','127.0.0.1','--port','8000' `
+            -WorkingDirectory $PWD `
+            -RedirectStandardOutput "$env:GITHUB_WORKSPACE\backend.log" `
+            -RedirectStandardError "$env:GITHUB_WORKSPACE\backend-error.log" `
+            -PassThru
+          $process.Id | Set-Content "$env:GITHUB_WORKSPACE\backend.pid"
+          Write-Output "Started backend process $($process.Id)"
+          node ..\tools\smoke_test.js
 
-      - name: Run smoke test (Node)
+      - name: Run smoke test (Unix)
+        if: matrix.os != 'windows-latest'
         run: node tools/smoke_test.js
 
-      - name: Run postinstall helper (verify)
+      - name: Show backend logs on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Write-Output 'Backend output:'
+          if (Test-Path backend.log) { Get-Content backend.log } else { Write-Output 'No backend.log found' }
+          Write-Output 'Backend error output:'
+          if (Test-Path backend-error.log) { Get-Content backend-error.log } else { Write-Output 'No backend-error.log found' }
+
+      - name: Run postinstall helper (verify, Unix)
+        if: matrix.os != 'windows-latest'
         working-directory: DesktopApp
         run: |
-          node ./scripts/postinstall-electron.js || true
-          echo "List electron dist files:" 
+          node ./scripts/postinstall-electron.js
+          echo "List electron dist files:"
           ls -la node_modules/electron/dist || true
+
+      - name: Run postinstall helper (verify, Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        working-directory: DesktopApp
+        run: |
+          node .\scripts\postinstall-electron.js
+          Write-Output 'List electron dist files:'
+          Get-ChildItem node_modules\electron\dist -Force -ErrorAction SilentlyContinue
 
       - name: Save electron dist to cache folder (Unix)
         if: matrix.os != 'windows-latest'
@@ -106,5 +142,50 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path DesktopApp\.electron_dist_cache | Out-Null
-          Copy-Item -Path DesktopApp\node_modules\electron\dist\* -Destination DesktopApp\.electron_dist_cache -Recurse -Force || Write-Output 'copy-failed'
+          $source = 'DesktopApp\node_modules\electron\dist'
+          if (Test-Path $source) {
+            New-Item -ItemType Directory -Force -Path DesktopApp\.electron_dist_cache | Out-Null
+            Copy-Item -Path "$source\*" -Destination DesktopApp\.electron_dist_cache -Recurse -Force
+            Write-Output 'Saved Electron dist to cache folder'
+          } else {
+            Write-Output 'Electron dist was not available; skipping cache save'
+          }
+
+  package-windows:
+    name: Package Windows installer
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Clear electron-builder cache
+        shell: pwsh
+        run: |
+          $cache = "$env:LOCALAPPDATA\electron-builder\Cache"
+          if (Test-Path $cache) {
+            Remove-Item -LiteralPath $cache -Recurse -Force
+          }
+
+      - name: Install DesktopApp dependencies
+        working-directory: DesktopApp
+        run: npm install --no-audit --no-fund
+
+      - name: Build unsigned Windows installer
+        working-directory: DesktopApp
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run build:win
+
+      - name: Upload Windows installer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarketMind-AI-Windows-${{ github.sha }}
+          path: DesktopApp/dist-build/**
+          if-no-files-found: error
+          retention-days: 14
