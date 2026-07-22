@@ -26,6 +26,29 @@ def test_investing_format_with_bom_and_commas():
     assert np.all(h >= c) and np.all(c >= l)
 
 
+def test_dukascopy_iso_timestamp_format():
+    # dukascopy-node CSV: timestamp,open,high,low,close,volume (oldest-first)
+    text = (
+        "timestamp,open,high,low,close,volume\n"
+        "2025-01-01T00:00:00.000Z,2620,2635,2610,2630,1500\n"
+        "2025-01-02T00:00:00.000Z,2630,2650,2625,2645,1800\n"
+        "2025-01-03T00:00:00.000Z,2645,2660,2640,2655,1700\n"
+    )
+    h, l, c = csv_loader.load_ohlc_csv(text)
+    assert list(c) == [2630, 2645, 2655]   # order preserved (already oldest-first)
+    assert h[1] == 2650 and l[1] == 2625
+
+
+def test_dukascopy_epoch_ms_timestamp():
+    text = (
+        "timestamp,open,high,low,close,volume\n"
+        "1735689600000,2620,2635,2610,2630,1500\n"
+        "1735776000000,2630,2650,2625,2645,1800\n"
+    )
+    _, _, c = csv_loader.load_ohlc_csv(text)
+    assert list(c) == [2630, 2645]
+
+
 def test_generic_ohlc_oldest_first_kept():
     text = (
         "Date,Open,High,Low,Close\n"

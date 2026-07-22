@@ -262,6 +262,24 @@ Returns the current signal plus the walk-forward backtest. A real sample lives a
 long-term trend strategy scores a **profit factor ≈ 1.6** (win rate 46%, avg win
 +7.0% vs avg loss −3.7%, max drawdown ≈ 3%) — a modest 13-trade sample, but real.
 
+The loader also reads the **Dukascopy** (`dukascopy-node`) layout
+(`timestamp,open,high,low,close,volume`, ISO or epoch-ms timestamps).
+
+### Free history from Dukascopy
+
+Dukascopy offers free tick + OHLC history (majors, metals, indices, crypto) back
+to ~2003, no account needed. `tools/fetch_dukascopy.sh` wraps the `dukascopy-node`
+CLI to download it as CSV straight into `Backend/data/`:
+
+```bash
+tools/fetch_dukascopy.sh xauusd d1  2023-01-01              # daily gold
+tools/fetch_dukascopy.sh eurusd h1  2024-01-01 2024-12-31   # hourly EUR/USD
+tools/fetch_dukascopy.sh btcusd m15 2025-01-01              # 15-min BTC (intraday)
+```
+
+Then POST the CSV to `/strategy/backtest_csv`. (Dukascopy's servers, like FMP's,
+are unreachable from Claude Code web sessions — run this on your own machine.)
+
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`
 - Add authentication and API token handling

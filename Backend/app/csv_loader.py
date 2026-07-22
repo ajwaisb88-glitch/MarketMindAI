@@ -49,7 +49,7 @@ def load_ohlc_csv(text: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     i_close = _pick(header, "close", "price")
     i_high = _pick(header, "high")
     i_low = _pick(header, "low")
-    i_date = _pick(header, "date")
+    i_date = _pick(header, "date", "timestamp", "time", "datetime")  # dukascopy uses 'timestamp'
     if i_close is None:
         raise ValueError("CSV needs a 'Close' or 'Price' column")
 
@@ -76,23 +76,34 @@ def load_ohlc_csv(text: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return np.array(highs), np.array(lows), np.array(closes)
 
 
+def _parse_date_key(d: str):
+    """Turn a date/timestamp string into a comparable integer, or None.
+
+    Handles MM/DD/YYYY, YYYY-MM-DD, ISO datetimes (``2025-01-01T00:00:00``),
+    and millisecond/second epoch timestamps (dukascopy-node output).
+    """
+    d = d.strip().strip('"')
+    if not d:
+        return None
+    if d.isdigit():                       # epoch ms or s
+        return int(d)
+    day = d.split("T")[0].split(" ")[0]   # drop any time portion
+    for sep in ("/", "-", "."):
+        if sep in day:
+            parts = day.split(sep)
+            if len(parts) == 3:
+                try:
+                    if len(parts[0]) == 4:                 # YYYY-MM-DD
+                        return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
+                    return int(parts[2]) * 10000 + int(parts[0]) * 100 + int(parts[1])  # MM/DD/YYYY
+                except ValueError:
+                    return None
+    return None
+
+
 def _looks_newest_first(dates: list[str]) -> bool:
     """Heuristic: many exports (Investing.com) list newest row first."""
-    def parse(d: str):
-        for sep in ("/", "-"):
-            if sep in d:
-                parts = d.split(sep)
-                if len(parts) == 3:
-                    # try MM/DD/YYYY then YYYY-MM-DD
-                    try:
-                        if len(parts[0]) == 4:
-                            return int(parts[0]) * 10000 + int(parts[1]) * 100 + int(parts[2])
-                        return int(parts[2]) * 10000 + int(parts[0]) * 100 + int(parts[1])
-                    except ValueError:
-                        return None
-        return None
-
-    first, last = parse(dates[0]), parse(dates[-1])
+    first, last = _parse_date_key(dates[0]), _parse_date_key(dates[-1])
     if first is None or last is None:
         return False
     return first > last
