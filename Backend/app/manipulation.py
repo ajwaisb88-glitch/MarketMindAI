@@ -129,11 +129,29 @@ class SpoofingReport:
     funding_rate: float
     sentiment: dict[str, float]      # SPOOF / SHEEP / WHALE weights, sum to 1
     label: str                       # human-readable verdict
+    pressure_side: str | None = None # side the spoof wall sits on ("bid"/"ask")
+    predicted_move: int = 0          # +1 up / -1 down / 0 none — the scalp direction
     features: dict[str, float] = field(default_factory=dict)
 
 
 def _logistic(x: float) -> float:
     return 1.0 / (1.0 + np.exp(-x))
+
+
+def spoof_pressure_side(events: list[FlowEvent], near_ticks: float = 3.0) -> str | None:
+    """Which side carries the phantom wall — the far, cancelled resting size.
+
+    A spoof wall on the bid fakes demand/support; when it is pulled the price
+    tends to fall (predicted move down). A wall on the ask does the reverse.
+    Returns None when there is no clear far-cancelled size on either side.
+    """
+    bid_far = sum(e.size for e in events
+                  if e.action == "cancel" and e.side == "bid" and e.distance_ticks > near_ticks)
+    ask_far = sum(e.size for e in events
+                  if e.action == "cancel" and e.side == "ask" and e.distance_ticks > near_ticks)
+    if bid_far == 0 and ask_far == 0:
+        return None
+    return "bid" if bid_far >= ask_far else "ask"
 
 
 def spoofing_probability(
@@ -181,6 +199,9 @@ def spoofing_probability(
         else "ELEVATED" if probability >= 40
         else "CLEAN"
     )
+    pressure_side = spoof_pressure_side(events)
+    # Wall on the bid fakes support -> fade it (expect price down), and vice versa.
+    predicted_move = 0 if pressure_side is None else (-1 if pressure_side == "bid" else 1)
 
     return SpoofingReport(
         probability=probability,
@@ -192,6 +213,8 @@ def spoofing_probability(
         funding_rate=round(funding_rate, 6),
         sentiment=sentiment,
         label=label,
+        pressure_side=pressure_side,
+        predicted_move=predicted_move,
         features={
             "imbalance": round(imb, 4),
             "cancel_trade_ratio": round(ctr, 4),

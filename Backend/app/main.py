@@ -249,3 +249,22 @@ async def scalping(
     result["edge_sweep"] = scalping_mod.edge_sweep(cfg, paths=min(paths, 4000))
     result["scalp_size_sweep"] = scalping_mod.scalp_size_sweep(cfg, paths=min(paths, 4000))
     return result
+
+
+@app.get("/scalping/signal")
+async def scalping_signal(
+    p_impact: float = Query(0.7, ge=0.0, le=1.0,
+                            description="Assumed P(a detected spoof pushes price the predicted way)"),
+    paths: int = Query(4000, ge=100, le=20000),
+):
+    """Signal-driven scalping backtest: the edge is *measured* from the detector.
+
+    Instead of assuming a win rate, this runs the real spoofing detector over
+    simulated windows, trades the direction it infers, and measures the realised
+    hit-rate under the given price-impact assumption — then Monte-Carlos the
+    strategy from $100 with that measured edge. Includes an impact sweep showing
+    how completely the outcome hinges on that one assumption.
+    """
+    result = scalping_mod.backtest_from_signal(p_impact=p_impact, paths=paths)
+    result["impact_sweep"] = scalping_mod.impact_sweep(paths=min(paths, 4000))
+    return result

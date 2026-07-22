@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .manipulation import OrderBookFeed, spoofing_probability
 from .quant import fractional_kelly
 
 
@@ -169,6 +170,87 @@ def scalp_size_sweep(cfg: ScalpConfig | None = None, paths: int = 4000, seed: in
     return rows
 
 
+# ---------------------------------------------------------------------------
+# End-to-end: measure the edge from the detector instead of assuming it
+# ---------------------------------------------------------------------------
+
+def measure_signal_edge(
+    p_impact: float = 0.70,
+    n: int = 8000,
+    threshold: int = 70,
+    spoof_rate: float = 0.35,
+    seed: int = 0,
+) -> dict:
+    """Measure the strategy's realised win rate by running the actual detector.
+
+    For each simulated window a *ground-truth* next-move is assigned: after a
+    real spoof the price moves away from the wall with probability ``p_impact``
+    (the one modelled, unprovable assumption — swept below); clean windows move
+    50/50. The detector then scores the window, and when it fires (probability
+    >= ``threshold``) the strategy trades in the direction the detector infers
+    from the phantom-wall side. The fraction of those trades that are correct is
+    the ``edge`` that feeds :func:`simulate_paths` — so the backtest is driven
+    end-to-end by the signal, not a hand-picked win rate.
+    """
+    rng = np.random.default_rng(seed)
+    feed = OrderBookFeed(seed=seed)
+    trades = wins = spoof_trades = spoof_wins = 0
+    for _ in range(n):
+        is_spoof = rng.random() < spoof_rate
+        side = "bid" if rng.random() < 0.5 else "ask"
+        strength = float(rng.uniform(0.2, 1.0)) if is_spoof else None
+        snap, events = feed.sample(spoof=is_spoof, side=side, strength=strength)
+        report = spoofing_probability(snap, events, funding_rate=feed.funding_rate())
+        if report.probability < threshold or report.predicted_move == 0:
+            continue  # detector is not confident enough to trade
+        if is_spoof:
+            aligned = rng.random() < p_impact
+            true_move = (-1 if side == "bid" else 1) if aligned else (1 if side == "bid" else -1)
+        else:
+            true_move = 1 if rng.random() < 0.5 else -1
+        won = int(report.predicted_move == true_move)
+        trades += 1
+        wins += won
+        if is_spoof:
+            spoof_trades += 1
+            spoof_wins += won
+    edge = wins / trades if trades else 0.0
+    return {
+        "p_impact": p_impact,
+        "threshold": threshold,
+        "windows": n,
+        "trades_taken": trades,
+        "trade_rate": round(trades / n, 4),
+        "measured_edge": round(edge, 4),
+        "edge_on_true_spoofs": round(spoof_wins / spoof_trades, 4) if spoof_trades else None,
+        "false_positive_share": round(1 - spoof_trades / trades, 4) if trades else None,
+    }
+
+
+def backtest_from_signal(p_impact: float = 0.70, paths: int = 5000, seed: int = 0) -> dict:
+    """Full pipeline: measure the edge from the detector, then run the strategy."""
+    signal = measure_signal_edge(p_impact=p_impact, seed=seed)
+    cfg = ScalpConfig(edge=max(min(signal["measured_edge"], 0.7), 0.5))
+    strat = simulate_paths(cfg, paths=paths, seed=seed)
+    return {"signal": signal, "strategy": strat}
+
+
+def impact_sweep(paths: int = 4000, seed: int = 0) -> list[dict]:
+    """How the whole result hinges on the (assumed) price-impact of a spoof."""
+    rows = []
+    for p_impact in (0.50, 0.55, 0.60, 0.70, 0.80, 0.90):
+        r = backtest_from_signal(p_impact=p_impact, paths=paths, seed=seed)
+        rows.append({
+            "p_impact": p_impact,
+            "measured_edge": r["signal"]["measured_edge"],
+            "trade_rate": r["signal"]["trade_rate"],
+            "median_final_equity": r["strategy"]["median_final_equity"],
+            "prob_reach_1000": r["strategy"]["prob_reach_1000"],
+            "prob_ruin": r["strategy"]["prob_ruin"],
+        })
+    return rows
+
+
 def one_path(cfg: ScalpConfig | None = None, seed: int = 0) -> dict:
     """A single equity curve (like the one shown 'live'), for illustration."""
     cfg = cfg or ScalpConfig()
@@ -232,6 +314,13 @@ def format_report(paths: int = 5000, seed: int = 0) -> str:
     L.append(f"  {'move%':>6} {'lev':>6} {'cost%':>7} {'median$':>10} {'P(1000)':>9} {'P(ruin)':>9}")
     for row in scalp_size_sweep(cfg, paths=paths, seed=seed):
         L.append(f"  {row['scalp_move_pct']:>6} {row['implied_leverage']:>5}x {row['cost_per_trade_pct']:>6}% "
+                 f"{row['median_final_equity']:>10} {row['prob_reach_1000']*100:>8.1f}% {row['prob_ruin']*100:>8.1f}%")
+    L.append("=" * 68)
+    L.append("\n  SIGNAL-DRIVEN  (edge MEASURED from the detector, not assumed)")
+    L.append("  price impact = P(spoof actually pushes price the predicted way)")
+    L.append(f"  {'impact':>7} {'meas.edge':>10} {'trade%':>8} {'median$':>10} {'P(1000)':>9} {'P(ruin)':>9}")
+    for row in impact_sweep(paths=paths, seed=seed):
+        L.append(f"  {row['p_impact']:>7} {row['measured_edge']:>10} {row['trade_rate']*100:>7.1f}% "
                  f"{row['median_final_equity']:>10} {row['prob_reach_1000']*100:>8.1f}% {row['prob_ruin']*100:>8.1f}%")
     L.append("=" * 68)
     return "\n".join(L)

@@ -58,6 +58,25 @@ def test_report_fields_and_sentiment_normalised():
     assert r.label in {"POSSIBLE SPOOFING", "ELEVATED", "CLEAN"}
 
 
+def test_pressure_side_and_predicted_move():
+    bid_wall = [m.FlowEvent(0, "bid", "cancel", 10, 5), m.FlowEvent(1, "ask", "cancel", 1, 4)]
+    assert m.spoof_pressure_side(bid_wall) == "bid"
+    ask_wall = [m.FlowEvent(0, "ask", "cancel", 10, 5), m.FlowEvent(1, "bid", "cancel", 1, 4)]
+    assert m.spoof_pressure_side(ask_wall) == "ask"
+    assert m.spoof_pressure_side([]) is None
+
+
+def test_report_carries_direction_on_spoof():
+    feed = m.OrderBookFeed(seed=3)
+    snap, ev = feed.sample(spoof=True, side="bid", strength=1.0)
+    r = m.spoofing_probability(snap, ev)
+    assert r.pressure_side in {"bid", "ask", None}
+    assert r.predicted_move in {-1, 0, 1}
+    # a bid wall should predict a downward fade
+    if r.pressure_side == "bid":
+        assert r.predicted_move == -1
+
+
 def test_feed_is_deterministic():
     a = m.OrderBookFeed(seed=42).sample(spoof=True, strength=0.7)
     b = m.OrderBookFeed(seed=42).sample(spoof=True, strength=0.7)

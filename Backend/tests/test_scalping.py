@@ -54,3 +54,24 @@ def test_one_path_stops_at_target_or_ruin():
 def test_sweeps_return_rows():
     assert len(scalping.edge_sweep(paths=300)) == 6
     assert len(scalping.scalp_size_sweep(paths=300)) == 5
+
+
+def test_measured_edge_tracks_price_impact():
+    # A coin-flip impact must yield ~coin-flip edge; strong impact a real edge.
+    flip = scalping.measure_signal_edge(p_impact=0.5, n=4000, seed=0)
+    strong = scalping.measure_signal_edge(p_impact=0.85, n=4000, seed=0)
+    assert abs(flip["measured_edge"] - 0.5) < 0.05
+    assert strong["measured_edge"] > flip["measured_edge"] + 0.15
+    assert 0.0 < flip["trade_rate"] <= 1.0
+
+
+def test_backtest_from_signal_shape():
+    r = scalping.backtest_from_signal(p_impact=0.7, paths=800, seed=1)
+    assert "signal" in r and "strategy" in r
+    assert 0.5 <= r["strategy"]["config"]["edge"] <= 0.7
+
+
+def test_impact_sweep_is_monotonic_in_edge():
+    rows = scalping.impact_sweep(paths=800, seed=0)
+    edges = [r["measured_edge"] for r in rows]
+    assert edges == sorted(edges)

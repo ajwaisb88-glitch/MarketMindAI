@@ -84,6 +84,26 @@ hidden killer — chasing 0.2% scalps forces 25× leverage and ruins ~86% of
 accounts on the same edge. `DesktopApp/scalp_reality.html` renders this as a
 standalone visual report. Endpoint: `GET /scalping?edge=0.58&scalp_move_pct=0.5`.
 
+#### Signal-driven edge (measured, not assumed)
+
+`measure_signal_edge()` closes the loop: it runs the real spoofing detector over
+simulated windows, trades the direction the detector infers from the phantom-wall
+side, and measures the realised win rate under a price-impact assumption
+`p_impact` = P(a detected spoof actually pushes price the predicted way). The
+measured edge tracks that assumption almost linearly:
+
+| p_impact | measured edge | median end | P(reach $1,000) |
+|----------|---------------|-----------|-----------------|
+| 0.50 (coin flip) | 0.51 | $77 | 0.0% |
+| 0.60 | 0.59 | $191 | 3.7% |
+| 0.70 | 0.69 | $3,401 | 94.7% |
+| 0.80 | 0.78 | $4,860 | 97.9% |
+
+The detector *detects* spoofs reliably (recall ~1.0); whether that converts into
+a tradable edge depends entirely on `p_impact` — the one assumption no backtest
+can settle, only live forward-testing on real order-book data can.
+Endpoint: `GET /scalping/signal?p_impact=0.7`.
+
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`
 - Add authentication and API token handling
