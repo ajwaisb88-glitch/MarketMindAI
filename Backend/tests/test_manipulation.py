@@ -101,8 +101,9 @@ def test_non_crypto_has_no_funding():
 def test_scan_all_assets_is_stable_and_ranked():
     reports = m.scan_assets(seed=3)
     assert len(reports) == len(m.MARKET_PROFILES)
-    probs = [r["probability"] for r in reports]
-    assert probs == sorted(probs, reverse=True)      # ranked highest-risk first
+    # actionable rows are ranked by grade score (highest first)
+    actionable_scores = [r["score"] for r in reports if r["grade"] != "NO-TRADE"]
+    assert actionable_scores == sorted(actionable_scores, reverse=True)
     for r in reports:
         assert 0 <= r["probability"] <= 100
         assert abs(sum(r["sentiment"].values()) - 1.0) < 0.01  # 3-dp rounding

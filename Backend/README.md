@@ -192,6 +192,36 @@ zero graded-A signals. Endpoint:
   filter chips (All / ≥B / ≥A / A+·A1) and entry/SL/TP per asset, plus a grade
   filter on the single-asset radar.
 
+### Asset universe
+
+`MARKET_PROFILES` now spans crypto (btc, eth), **meme coins** (doge, shib, pepe),
+**stablecoins** (usdt, usdc — pegged, so they grade NO-TRADE, which is honest),
+**metals** (gold, **xauusd**, silver, xagusd), energy (oil), **forex** (eurusd,
+gbpusd, usdjpy, audusd) and indices (sp500, nasdaq). Each profile carries a
+`class` tag and an `fmp` symbol for pulling real prices.
+
+## Long-term & intraday strategies
+
+`app/strategies.py` adds two **price/OHLC-based** engines (distinct from the
+order-book scalp engine), so they run on real bars from any provider:
+
+- **intraday** — EMA(9/21) trend + RSI filter, stop/target sized in ATR units,
+  hold minutes–hours. `intraday_signal(highs, lows, closes)`.
+- **long-term** — SMA(50/200) trend + 12-bar momentum, wide ATR stops, hold
+  days–weeks. `longterm_signal(closes, highs, lows)`.
+
+Both return a graded signal (same A+/A1/… ladder) with entry/SL/TP, and both ship
+a **walk-forward backtest** that only ever uses past bars (no look-ahead), reporting
+win rate, profit factor, return and max drawdown. Endpoints:
+
+- `GET /strategy/signal?asset=xauusd&horizon=long-term`
+- `GET /strategy/backtest?asset=btc&horizon=intraday`
+
+Data source: the backend tries real bars via yfinance and falls back to a
+deterministic synthetic series (reported in `data_source`). For live validation
+the session's **Financial Modeling Prep (FMP)** tool provides real quotes and
+intraday/EOD bars for every `fmp` symbol above.
+
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`
 - Add authentication and API token handling

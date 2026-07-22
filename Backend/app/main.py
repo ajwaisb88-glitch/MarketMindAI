@@ -138,6 +138,37 @@ def _fetch_closes(ticker: str, period: str = "3mo") -> Optional[np.ndarray]:
         return None
 
 
+def _fetch_ohlc(asset: str, intraday: bool) -> tuple:
+    """Return (highs, lows, closes, source) for an asset.
+
+    Tries real bars from yfinance; on any failure (no network / unknown symbol)
+    falls back to a deterministic synthetic series so the endpoint always works.
+    The ``source`` field tells the caller which was used.
+    """
+    from app import strategies as strat
+
+    ticker = ASSET_TICKERS.get(asset.lower())
+    if ticker is not None:
+        try:
+            import yfinance as yf
+            kwargs = (dict(period="5d", interval="15m") if intraday
+                      else dict(period="2y", interval="1d"))
+            data = yf.download(ticker, progress=False, auto_adjust=True, **kwargs)
+            if not data.empty and len(data) > 60:
+                def col(name):
+                    c = data[name]
+                    return (c.iloc[:, 0] if hasattr(c, "columns") else c).dropna().to_numpy(dtype=float).ravel()
+                return col("High"), col("Low"), col("Close"), "yfinance"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("OHLC fetch failed for %s: %s", asset, exc)
+
+    # deterministic synthetic fallback
+    seed = abs(hash(asset.lower())) % 10_000
+    h, l, c = strat.synthetic_ohlc(n=(500 if intraday else 800), seed=seed,
+                                   vol=(0.006 if intraday else 0.014))
+    return h, l, c, "simulated"
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -363,3 +394,45 @@ async def scalping_scan(
     keep more of the edge.
     """
     return {"p_impact": p_impact, "scan": scalping_mod.scan_assets_scalping(p_impact=p_impact, paths=paths)}
+
+
+# ---------------------------------------------------------------------------
+# Long-term + intraday strategy routes (price/OHLC based)
+# ---------------------------------------------------------------------------
+
+@app.get("/strategy/signal")
+async def strategy_signal(
+    asset: str = "btc",
+    horizon: str = Query("intraday", pattern="^(intraday|long-term|longterm)$"),
+):
+    """Current graded signal (entry/SL/TP) for an asset at the chosen horizon."""
+    from app import strategies as strat
+
+    long_term = horizon != "intraday"
+    highs, lows, closes, source = _fetch_ohlc(asset, intraday=not long_term)
+    sig = (strat.longterm_signal(closes, highs, lows) if long_term
+           else strat.intraday_signal(highs, lows, closes))
+    out = sig.as_dict()
+    out["asset"] = asset.lower()
+    out["data_source"] = source
+    return out
+
+
+@app.get("/strategy/backtest")
+async def strategy_backtest(
+    asset: str = "btc",
+    horizon: str = Query("intraday", pattern="^(intraday|long-term|longterm)$"),
+):
+    """Walk-forward backtest of the strategy on the asset's bars."""
+    from app import strategies as strat
+
+    long_term = horizon != "intraday"
+    highs, lows, closes, source = _fetch_ohlc(asset, intraday=not long_term)
+    fn = strat.longterm_signal if long_term else strat.intraday_signal
+    result = strat.backtest(highs, lows, closes, fn,
+                            max_hold=(30 if long_term else 12))
+    result["asset"] = asset.lower()
+    result["horizon"] = "long-term" if long_term else "intraday"
+    result["data_source"] = source
+    result["bars"] = len(closes)
+    return result

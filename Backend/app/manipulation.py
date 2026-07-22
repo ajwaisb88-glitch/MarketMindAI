@@ -259,18 +259,39 @@ def _sentiment_triangle(
 # each with a realistic price, tick size and default scalp width. ``crypto``
 # marks perpetuals that carry a funding rate. Anything not listed falls back to
 # DEFAULT_PROFILE, so the engine never fails on an unknown symbol.
+# ``fmp`` is the Financial Modeling Prep symbol used to pull real prices/bars for
+# that instrument; ``class`` groups the universe (crypto / meme / stable / forex /
+# metal / energy / index). Stablecoins are pegged so they carry a tiny scalp width
+# and naturally grade NO-TRADE — that is the honest read, not a bug.
 MARKET_PROFILES: dict[str, dict] = {
-    "btc":    {"mid": 60000.0, "tick": 0.5,     "crypto": True,  "scalp_move_pct": 0.30},
-    "eth":    {"mid": 3000.0,  "tick": 0.05,    "crypto": True,  "scalp_move_pct": 0.35},
-    "gold":   {"mid": 2400.0,  "tick": 0.1,     "crypto": False, "scalp_move_pct": 0.40},
-    "silver": {"mid": 30.0,    "tick": 0.005,   "crypto": False, "scalp_move_pct": 0.40},
-    "oil":    {"mid": 80.0,    "tick": 0.01,    "crypto": False, "scalp_move_pct": 0.45},
-    "eurusd": {"mid": 1.08,    "tick": 0.00001, "crypto": False, "scalp_move_pct": 0.10},
-    "gbpusd": {"mid": 1.27,    "tick": 0.00001, "crypto": False, "scalp_move_pct": 0.12},
-    "sp500":  {"mid": 5500.0,  "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.25},
-    "nasdaq": {"mid": 19000.0, "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.30},
+    # majors — crypto
+    "btc":    {"mid": 60000.0, "tick": 0.5,     "crypto": True,  "scalp_move_pct": 0.30, "class": "crypto",  "fmp": "BTCUSD"},
+    "eth":    {"mid": 3000.0,  "tick": 0.05,    "crypto": True,  "scalp_move_pct": 0.35, "class": "crypto",  "fmp": "ETHUSD"},
+    # meme coins
+    "doge":   {"mid": 0.15,    "tick": 0.00001, "crypto": True,  "scalp_move_pct": 0.50, "class": "meme",    "fmp": "DOGEUSD"},
+    "shib":   {"mid": 2.5e-5,  "tick": 1e-9,    "crypto": True,  "scalp_move_pct": 0.60, "class": "meme",    "fmp": "SHIBUSD"},
+    "pepe":   {"mid": 1.2e-5,  "tick": 1e-10,   "crypto": True,  "scalp_move_pct": 0.70, "class": "meme",    "fmp": "PEPEUSD"},
+    # stablecoins (pegged — effectively untradable for signals)
+    "usdt":   {"mid": 1.0,     "tick": 0.0001,  "crypto": True,  "scalp_move_pct": 0.03, "class": "stable",  "fmp": "USDTUSD"},
+    "usdc":   {"mid": 1.0,     "tick": 0.0001,  "crypto": True,  "scalp_move_pct": 0.03, "class": "stable",  "fmp": "USDCUSD"},
+    # metals
+    "gold":   {"mid": 2400.0,  "tick": 0.1,     "crypto": False, "scalp_move_pct": 0.40, "class": "metal",   "fmp": "GCUSD"},
+    "xauusd": {"mid": 2400.0,  "tick": 0.01,    "crypto": False, "scalp_move_pct": 0.40, "class": "metal",   "fmp": "XAUUSD"},
+    "silver": {"mid": 30.0,    "tick": 0.005,   "crypto": False, "scalp_move_pct": 0.40, "class": "metal",   "fmp": "SIUSD"},
+    "xagusd": {"mid": 30.0,    "tick": 0.001,   "crypto": False, "scalp_move_pct": 0.40, "class": "metal",   "fmp": "XAGUSD"},
+    # energy
+    "oil":    {"mid": 80.0,    "tick": 0.01,    "crypto": False, "scalp_move_pct": 0.45, "class": "energy",  "fmp": "CLUSD"},
+    # forex
+    "eurusd": {"mid": 1.08,    "tick": 0.00001, "crypto": False, "scalp_move_pct": 0.10, "class": "forex",   "fmp": "EURUSD"},
+    "gbpusd": {"mid": 1.27,    "tick": 0.00001, "crypto": False, "scalp_move_pct": 0.12, "class": "forex",   "fmp": "GBPUSD"},
+    "usdjpy": {"mid": 157.0,   "tick": 0.001,   "crypto": False, "scalp_move_pct": 0.12, "class": "forex",   "fmp": "USDJPY"},
+    "audusd": {"mid": 0.66,    "tick": 0.00001, "crypto": False, "scalp_move_pct": 0.12, "class": "forex",   "fmp": "AUDUSD"},
+    # indices
+    "sp500":  {"mid": 5500.0,  "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.25, "class": "index",   "fmp": "^GSPC"},
+    "nasdaq": {"mid": 19000.0, "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.30, "class": "index",   "fmp": "^IXIC"},
 }
-DEFAULT_PROFILE = {"mid": 100.0, "tick": 0.01, "crypto": False, "scalp_move_pct": 0.30}
+DEFAULT_PROFILE = {"mid": 100.0, "tick": 0.01, "crypto": False, "scalp_move_pct": 0.30,
+                   "class": "other", "fmp": None}
 
 
 def market_profile(asset: str) -> dict:
