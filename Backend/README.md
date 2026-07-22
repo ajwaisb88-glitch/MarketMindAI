@@ -58,7 +58,31 @@ The spoofing benchmark includes legitimate market-maker *repricing* as a
 confounder in the clean class, which is why precision is 0.85 (false positives)
 rather than a trivial 1.0.
 
-Run the test suite with `python -m pytest -q`.
+### Scalping strategy backtest
+
+`app/scalping.py` wires the signal → sizing → exit loop into a trading strategy
+and Monte-Carlos it across thousands of $100 accounts to test the "$100 → $1,000"
+claim as a *distribution* rather than one lucky path. Run it with:
+
+```bash
+cd Backend
+python -m app.scalping
+```
+
+Key finding (600 scalps, half-Kelly, 0.5% stops = 10× leverage, 6bps fee):
+
+| Signal win rate | Expectancy/trade | Median end | P(reach $1,000) | P(ruin) |
+|-----------------|------------------|-----------|-----------------|---------|
+| 50% (coin flip) | 0.00% | $100 | 0.0% | 0.0% |
+| 56% | 0.00% | $69 | 0.2% | 2.1% |
+| 58% | +0.20% | $128 | 1.2% | 0.3% |
+| 60% | +0.40% | $234 | 5.9% | 0.0% |
+
+The 10× is real but rare: even at a generous 58% win rate only ~1 in 80 accounts
+reaches $1,000 and ~2 in 5 end below the starting $100. Leverage/fee drag is the
+hidden killer — chasing 0.2% scalps forces 25× leverage and ruins ~86% of
+accounts on the same edge. `DesktopApp/scalp_reality.html` renders this as a
+standalone visual report. Endpoint: `GET /scalping?edge=0.58&scalp_move_pct=0.5`.
 
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`

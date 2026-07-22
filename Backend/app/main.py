@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import backtest as backtest_mod
 from app import quant
+from app import scalping as scalping_mod
 from app.manipulation import OrderBookFeed, spoofing_probability
 
 logger = logging.getLogger("marketmind")
@@ -225,3 +226,26 @@ async def quant_kelly(
 async def run_backtest():
     """Run the full quant + manipulation backtest suite and return the metrics."""
     return backtest_mod.run_all()
+
+
+@app.get("/scalping")
+async def scalping(
+    edge: float = Query(0.56, ge=0.5, le=0.7, description="Signal win probability p"),
+    scalp_move_pct: float = Query(0.5, gt=0.0, description="Stop distance as % of price"),
+    trades: int = Query(600, ge=1, le=5000),
+    kelly_fraction: float = Query(0.5, ge=0.0, le=1.0),
+    paths: int = Query(3000, ge=100, le=20000),
+):
+    """Monte-Carlo the scalping strategy from $100 and report the outcome distribution.
+
+    Answers the "$100 -> $1000" question with probabilities, not one lucky path:
+    P(reach $1000), P(ruin), median equity, drawdown — plus edge and scalp-size
+    sweeps showing how sensitive the result is to a *real* edge and to fee drag.
+    """
+    cfg = scalping_mod.ScalpConfig(
+        edge=edge, scalp_move_pct=scalp_move_pct, trades=trades, kelly_fraction=kelly_fraction,
+    )
+    result = scalping_mod.simulate_paths(cfg, paths=paths)
+    result["edge_sweep"] = scalping_mod.edge_sweep(cfg, paths=min(paths, 4000))
+    result["scalp_size_sweep"] = scalping_mod.scalp_size_sweep(cfg, paths=min(paths, 4000))
+    return result
