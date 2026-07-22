@@ -263,7 +263,29 @@ long-term trend strategy scores a **profit factor ≈ 1.6** (win rate 46%, avg w
 +7.0% vs avg loss −3.7%, max drawdown ≈ 3%) — a modest 13-trade sample, but real.
 
 The loader also reads the **Dukascopy** (`dukascopy-node`) layout
-(`timestamp,open,high,low,close,volume`, ISO or epoch-ms timestamps).
+(`timestamp,open,high,low,close,volume`, ISO or epoch-ms timestamps) and
+headerless **MetaTrader** exports (`Date,Time,O,H,L,C,V` or `Date,O,H,L,C,V`,
+dots in the date). The backtest is capped to the most recent `max_bars` (default
+8000) so a 70k-row 1-minute file can't hang the request.
+
+#### Real XAUUSD results across timeframes
+
+Running the two strategies on a full MT export of gold (M5 → W1):
+
+| Timeframe | Strategy | Trades | Win% | Profit factor |
+|-----------|----------|-------:|-----:|--------------:|
+| M5  | intraday  | 554 | 43.5% | 1.08 |
+| M15 | intraday  | 562 | 45.2% | 1.13 |
+| M30 | intraday  | 662 | 44.6% | 1.17 |
+| H1  | intraday  | 400 | 45.0% | **1.19** |
+| H4  | long-term | 110 | 40.0% | 1.01 |
+| **D1**  | long-term | 74  | 48.6% | **1.65** |
+| W1  | long-term | 52  | 44.2% | 1.26 |
+
+Two honest takeaways: the intraday edge **improves with higher timeframes** (noise
+falls from M5→H1), and the **daily trend** is the standout (PF ≈ 1.65). H4 has
+essentially no edge for a 200-period trend filter. Samples: `sample_xauusd_mt_D1.csv`,
+`sample_xauusd_mt_H1.csv`.
 
 ### Free history from Dukascopy
 

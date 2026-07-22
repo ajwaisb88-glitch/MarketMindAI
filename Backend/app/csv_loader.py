@@ -33,25 +33,56 @@ def _pick(header: list[str], *names: str) -> int | None:
     return None
 
 
+_HEADER_TOKENS = {"date", "time", "datetime", "timestamp", "open", "high", "low",
+                  "close", "price", "volume", "vol", "vol."}
+
+
+def _is_header(row: list[str]) -> bool:
+    return any(_clean(c) in _HEADER_TOKENS for c in row)
+
+
+def _mt_layout(first_row: list[str]) -> dict:
+    """Column indices for a headerless MetaTrader-style row.
+
+    MT4/MT5 export as ``Date,Time,O,H,L,C,V`` (7 cols) or ``Date,O,H,L,C,V``.
+    Detected by whether the second field looks like a HH:MM time.
+    """
+    n = len(first_row)
+    has_time = len(first_row) > 1 and ":" in first_row[1]
+    if has_time:
+        return {"date": 0, "open": 2, "high": 3, "low": 4, "close": 5,
+                "vol": 6 if n > 6 else None}
+    return {"date": 0, "open": 1, "high": 2, "low": 3, "close": 4,
+            "vol": 5 if n > 5 else None}
+
+
 def load_ohlc_csv(text: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Parse CSV text → (highs, lows, closes) as float arrays, oldest first.
 
-    Column detection is case-insensitive. ``Price`` or ``Close`` is the close.
-    Raises ValueError if the required columns can't be found or no rows parse.
+    Understands three layouts: a named header (Investing.com / Dukascopy /
+    generic), and headerless MetaTrader exports (``Date,Time,O,H,L,C,V`` or
+    ``Date,O,H,L,C,V``). Dates may use ``.``, ``/`` or ``-`` and row order is
+    auto-detected. Raises ValueError if OHLC columns can't be found.
     """
     text = text.lstrip("﻿")  # strip a UTF-8 BOM if present
     reader = csv.reader(io.StringIO(text))
     rows = [r for r in reader if r and any(c.strip() for c in r)]
     if len(rows) < 2:
         raise ValueError("CSV has no data rows")
-    header, body = rows[0], rows[1:]
 
-    i_close = _pick(header, "close", "price")
-    i_high = _pick(header, "high")
-    i_low = _pick(header, "low")
-    i_date = _pick(header, "date", "timestamp", "time", "datetime")  # dukascopy uses 'timestamp'
-    if i_close is None:
-        raise ValueError("CSV needs a 'Close' or 'Price' column")
+    if _is_header(rows[0]):
+        header, body = rows[0], rows[1:]
+        i_close = _pick(header, "close", "price")
+        i_high = _pick(header, "high")
+        i_low = _pick(header, "low")
+        i_date = _pick(header, "date", "timestamp", "time", "datetime")
+        if i_close is None:
+            raise ValueError("CSV needs a 'Close' or 'Price' column")
+    else:
+        body = rows
+        layout = _mt_layout(rows[0])
+        i_close, i_high, i_low, i_date = (
+            layout["close"], layout["high"], layout["low"], layout["date"])
 
     highs, lows, closes, dates = [], [], [], []
     for r in body:

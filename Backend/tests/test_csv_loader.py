@@ -60,6 +60,49 @@ def test_generic_ohlc_oldest_first_kept():
     assert c[-1] == pytest.approx(11.5)
 
 
+def test_metatrader_headerless_with_time_column():
+    # MT4/MT5 export: Date,Time,Open,High,Low,Close,Volume (no header, dots in date)
+    text = (
+        "2025.01.01,00:00,2620.5,2635.0,2610.0,2630.0,1500\n"
+        "2025.01.02,00:00,2630.0,2650.0,2625.0,2645.0,1800\n"
+        "2025.01.03,00:00,2645.0,2660.0,2640.0,2655.0,1700\n"
+    )
+    h, l, c = csv_loader.load_ohlc_csv(text)
+    assert list(c) == [2630.0, 2645.0, 2655.0]
+    assert h[1] == 2650.0 and l[1] == 2625.0
+
+
+def test_metatrader_headerless_no_time_column():
+    # Date,Open,High,Low,Close,Volume (no separate time)
+    text = (
+        "2025.01.01,2620.5,2635.0,2610.0,2630.0,1500\n"
+        "2025.01.02,2630.0,2650.0,2625.0,2645.0,1800\n"
+    )
+    _, _, c = csv_loader.load_ohlc_csv(text)
+    assert list(c) == [2630.0, 2645.0]
+
+
+def test_metatrader_header_variant():
+    text = (
+        "Date,Time,Open,High,Low,Close,Volume\n"
+        "2025.01.01,00:00,2620.5,2635.0,2610.0,2630.0,1500\n"
+        "2025.01.02,00:00,2630.0,2650.0,2625.0,2645.0,1800\n"
+    )
+    _, _, c = csv_loader.load_ohlc_csv(text)
+    assert list(c) == [2630.0, 2645.0]
+
+
+def test_real_mt_samples_load():
+    for name in ("sample_xauusd_mt_D1.csv", "sample_xauusd_mt_H1.csv"):
+        path = os.path.join(DATA_DIR, name)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf-8") as f:
+            h, l, c = csv_loader.load_ohlc_csv(f.read())
+        assert len(c) > 500
+        assert np.all(h >= l)
+
+
 def test_missing_close_column_raises():
     with pytest.raises(ValueError):
         csv_loader.load_ohlc_csv("Date,Open,High,Low\n2025-01-01,1,2,0.5\n")

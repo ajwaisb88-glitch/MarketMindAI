@@ -471,14 +471,17 @@ async def strategy_backtest(
 async def strategy_backtest_csv(
     request: Request,
     horizon: str = Query("long-term", pattern="^(intraday|long-term|longterm)$"),
+    max_bars: int = Query(8000, ge=250, le=50000,
+                          description="Cap on bars used (the most recent N) to bound backtest time."),
 ):
     """Backtest a strategy on user-uploaded OHLC bars.
 
     POST the CSV file contents as the raw request body (e.g.
     `curl --data-binary @data.csv '.../strategy/backtest_csv?horizon=long-term'`).
-    Handles the Investing.com export format (Date/Price/Open/High/Low) and a
-    generic Date/Open/High/Low/Close layout, including files with a UTF-8 BOM.
-    Returns the current signal plus the walk-forward backtest.
+    Understands Investing.com, Dukascopy, generic Date/OHLC and headerless
+    MetaTrader exports (Date,Time,O,H,L,C,V). The current signal always uses the
+    full series; only the walk-forward backtest is capped to the most recent
+    ``max_bars`` bars so a huge 1-minute file can't hang the request.
     """
     from app import csv_loader, strategies as strat
 
@@ -490,14 +493,20 @@ async def strategy_backtest_csv(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=f"could not parse CSV: {exc}")
 
+    total_bars = len(closes)
     long_term = horizon != "intraday"
     fn = strat.longterm_signal if long_term else strat.intraday_signal
     signal = (strat.longterm_signal(closes, highs, lows) if long_term
               else strat.intraday_signal(highs, lows, closes)).as_dict()
+
+    # cap the backtest window (most recent bars) to keep the walk-forward bounded
+    if total_bars > max_bars:
+        highs, lows, closes = highs[-max_bars:], lows[-max_bars:], closes[-max_bars:]
     result = strat.backtest(highs, lows, closes, fn, max_hold=(30 if long_term else 12))
     return {
         "horizon": "long-term" if long_term else "intraday",
-        "bars": len(closes),
+        "bars_total": total_bars,
+        "bars_backtested": len(closes),
         "data_source": "user_csv",
         "current_signal": signal,
         "backtest": result,
