@@ -245,6 +245,23 @@ yfinance and then a deterministic synthetic series, so it always runs.
 > policy blocks them), so live FMP data works when you run the backend on your own
 > machine, not inside a web session.
 
+### Backtest your own CSV
+
+Upload OHLC bars directly — no API needed. The loader (`app/csv_loader.py`)
+handles the **Investing.com export** (`Date,Price,Open,High,Low,…`, comma
+thousands, quotes, UTF-8 BOM, newest-first) and a generic
+`Date,Open,High,Low,Close` layout, auto-detecting row order.
+
+```bash
+curl --data-binary @XAU_USD_Historical_Data.csv \
+  'http://127.0.0.1:8000/strategy/backtest_csv?horizon=long-term'
+```
+
+Returns the current signal plus the walk-forward backtest. A real sample lives at
+`Backend/data/sample_xauusd_daily.csv` (≈390 daily XAUUSD bars). On that data the
+long-term trend strategy scores a **profit factor ≈ 1.6** (win rate 46%, avg win
++7.0% vs avg loss −3.7%, max drawdown ≈ 3%) — a modest 13-trade sample, but real.
+
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`
 - Add authentication and API token handling

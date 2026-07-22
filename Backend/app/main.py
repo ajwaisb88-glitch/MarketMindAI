@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import backtest as backtest_mod
@@ -465,3 +465,40 @@ async def strategy_backtest(
     result["data_source"] = source
     result["bars"] = len(closes)
     return result
+
+
+@app.post("/strategy/backtest_csv")
+async def strategy_backtest_csv(
+    request: Request,
+    horizon: str = Query("long-term", pattern="^(intraday|long-term|longterm)$"),
+):
+    """Backtest a strategy on user-uploaded OHLC bars.
+
+    POST the CSV file contents as the raw request body (e.g.
+    `curl --data-binary @data.csv '.../strategy/backtest_csv?horizon=long-term'`).
+    Handles the Investing.com export format (Date/Price/Open/High/Low) and a
+    generic Date/Open/High/Low/Close layout, including files with a UTF-8 BOM.
+    Returns the current signal plus the walk-forward backtest.
+    """
+    from app import csv_loader, strategies as strat
+
+    raw = (await request.body()).decode("utf-8", errors="replace")
+    if not raw.strip():
+        raise HTTPException(status_code=400, detail="empty request body — POST the CSV contents")
+    try:
+        highs, lows, closes = csv_loader.load_ohlc_csv(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"could not parse CSV: {exc}")
+
+    long_term = horizon != "intraday"
+    fn = strat.longterm_signal if long_term else strat.intraday_signal
+    signal = (strat.longterm_signal(closes, highs, lows) if long_term
+              else strat.intraday_signal(highs, lows, closes)).as_dict()
+    result = strat.backtest(highs, lows, closes, fn, max_hold=(30 if long_term else 12))
+    return {
+        "horizon": "long-term" if long_term else "intraday",
+        "bars": len(closes),
+        "data_source": "user_csv",
+        "current_signal": signal,
+        "backtest": result,
+    }
