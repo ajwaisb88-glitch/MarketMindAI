@@ -141,12 +141,23 @@ def _fetch_closes(ticker: str, period: str = "3mo") -> Optional[np.ndarray]:
 def _fetch_ohlc(asset: str, intraday: bool) -> tuple:
     """Return (highs, lows, closes, source) for an asset.
 
-    Tries real bars from yfinance; on any failure (no network / unknown symbol)
-    falls back to a deterministic synthetic series so the endpoint always works.
-    The ``source`` field tells the caller which was used.
+    Priority: real bars from FMP (if FMP_API_KEY is set) → yfinance → a
+    deterministic synthetic series so the endpoint always works. The ``source``
+    field tells the caller which was used.
     """
-    from app import strategies as strat
+    from app import fmp_client, strategies as strat
 
+    # 1) Financial Modeling Prep — real data when the user's key is configured
+    if fmp_client.is_configured():
+        try:
+            fmp_bars = fmp_client.get_ohlc(asset, intraday=intraday)
+            if fmp_bars is not None:
+                h, l, c = fmp_bars
+                return h, l, c, "fmp"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("FMP OHLC failed for %s: %s", asset, exc)
+
+    # 2) yfinance
     ticker = ASSET_TICKERS.get(asset.lower())
     if ticker is not None:
         try:
@@ -175,7 +186,25 @@ def _fetch_ohlc(asset: str, intraday: bool) -> tuple:
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": app.version}
+    from app import fmp_client
+    return {
+        "status": "ok",
+        "version": app.version,
+        "fmp_configured": fmp_client.is_configured(),
+        "live_data": "fmp" if fmp_client.is_configured() else "yfinance/simulated",
+    }
+
+
+@app.get("/quote")
+async def quote(asset: str = "xauusd"):
+    """Live quote for an asset via FMP (requires FMP_API_KEY). 404 if unavailable."""
+    from app import fmp_client
+    if not fmp_client.is_configured():
+        raise HTTPException(status_code=503, detail="FMP_API_KEY not set — live quotes unavailable")
+    q = fmp_client.get_quote(asset)
+    if q is None:
+        raise HTTPException(status_code=404, detail=f"No FMP quote for '{asset}'")
+    return q
 
 
 @app.get("/assets")

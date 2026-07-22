@@ -217,10 +217,33 @@ win rate, profit factor, return and max drawdown. Endpoints:
 - `GET /strategy/signal?asset=xauusd&horizon=long-term`
 - `GET /strategy/backtest?asset=btc&horizon=intraday`
 
-Data source: the backend tries real bars via yfinance and falls back to a
-deterministic synthetic series (reported in `data_source`). For live validation
-the session's **Financial Modeling Prep (FMP)** tool provides real quotes and
-intraday/EOD bars for every `fmp` symbol above.
+### Live data with your FMP key
+
+The backend can pull **real** quotes and bars from Financial Modeling Prep. Set
+your API key as an environment variable before launching — it is read from the
+env only, never hard-coded or committed:
+
+```bash
+export FMP_API_KEY=your_key_here     # macOS/Linux
+setx  FMP_API_KEY your_key_here      # Windows (open a new terminal after)
+cd Backend && uvicorn app.main:app --port 8000
+```
+
+Then the data priority becomes **FMP → yfinance → synthetic**, per request. Check
+it's picked up:
+
+- `GET /health` → `"fmp_configured": true`, `"live_data": "fmp"`
+- `GET /quote?asset=xauusd` → live price
+- `GET /strategy/signal?asset=xauusd&horizon=long-term` → the `data_source` field
+  reads `"fmp"` when real bars were used.
+
+Symbols map via `MARKET_PROFILES[asset]["fmp"]` (e.g. `xauusd → XAUUSD`,
+`btc → BTCUSD`, `doge → DOGEUSD`). Without a key the backend falls back to
+yfinance and then a deterministic synthetic series, so it always runs.
+
+> Note: FMP's servers are not reachable from Claude Code web sessions (the network
+> policy blocks them), so live FMP data works when you run the backend on your own
+> machine, not inside a web session.
 
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`
