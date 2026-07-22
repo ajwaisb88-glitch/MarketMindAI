@@ -5,4 +5,5 @@ numpy
 pandas
 yfinance
 scikit-learn
+pytest
 pyinstaller

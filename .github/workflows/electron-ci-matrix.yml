@@ -80,6 +80,17 @@ jobs:
         run: |
           if (Test-Path requirements.txt) { pip install -r requirements.txt } else { pip install fastapi uvicorn }
 
+      - name: Run backend tests (Unix)
+        if: matrix.os != 'windows-latest'
+        working-directory: Backend
+        run: python -m pytest -q
+
+      - name: Run backend tests (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        working-directory: Backend
+        run: python -m pytest -q
+
       - name: Start backend (Unix)
         if: matrix.os != 'windows-latest'
         working-directory: Backend

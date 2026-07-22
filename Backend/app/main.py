@@ -5,8 +5,12 @@ from functools import lru_cache
 from typing import Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+
+from app import backtest as backtest_mod
+from app import quant
+from app.manipulation import OrderBookFeed, spoofing_probability
 
 logger = logging.getLogger("marketmind")
 
@@ -155,3 +159,69 @@ async def predict(asset: str = "gold"):
     result["asset"] = key
     result["ticker"] = ticker
     return result
+
+
+# ---------------------------------------------------------------------------
+# Manipulation radar + quant toolkit routes
+# ---------------------------------------------------------------------------
+
+@app.get("/manipulation")
+async def manipulation(
+    asset: str = "btc",
+    spoof: bool | None = Query(default=None, description="Force a spoof/clean scenario; omit for random."),
+    seed: int | None = None,
+):
+    """Spoofing radar for one order-book window.
+
+    Uses the deterministic simulated order-book feed (the seam where a live
+    exchange depth/trade stream would be plugged in) and returns the spoofing
+    probability, order-book features and SPOOF/SHEEP/WHALE sentiment triangle.
+    """
+    import random
+
+    feed = OrderBookFeed(seed=seed if seed is not None else random.randint(0, 10_000))
+    is_spoof = feed.rng.random() < 0.4 if spoof is None else spoof
+    side = "bid" if feed.rng.random() < 0.5 else "ask"
+    snap, events = feed.sample(spoof=is_spoof, side=side)
+    report = spoofing_probability(snap, events, funding_rate=feed.funding_rate())
+    return {
+        "asset": asset.lower(),
+        "scenario": "spoof" if is_spoof else "clean",
+        "mid": snap.mid,
+        "spread": snap.spread,
+        "probability": report.probability,
+        "label": report.label,
+        "posterior": round(report.posterior, 4),
+        "funding_rate": report.funding_rate,
+        "features": report.features,
+        "sentiment": report.sentiment,
+        "order_book": {
+            "bid_prices": snap.bid_prices.round(2).tolist(),
+            "bid_sizes": snap.bid_sizes.round(3).tolist(),
+            "ask_prices": snap.ask_prices.round(2).tolist(),
+            "ask_sizes": snap.ask_sizes.round(3).tolist(),
+        },
+    }
+
+
+@app.get("/quant/kelly")
+async def quant_kelly(
+    p: float = Query(..., ge=0.0, le=1.0, description="Win probability"),
+    b: float = Query(1.0, gt=0.0, description="Net odds (payout per unit staked)"),
+    c: float = Query(0.5, ge=0.0, le=1.0, description="Kelly fraction"),
+):
+    """Fractional Kelly stake and its expected log-growth rate."""
+    f = quant.fractional_kelly(p, b, c=c)
+    full = quant.fractional_kelly(p, b, c=1.0)
+    return {
+        "p": p, "b": b, "c": c,
+        "fraction": round(f, 4),
+        "full_kelly_fraction": round(full, 4),
+        "expected_log_growth": round(quant.kelly_growth_rate(f, p, b), 6),
+    }
+
+
+@app.get("/backtest")
+async def run_backtest():
+    """Run the full quant + manipulation backtest suite and return the metrics."""
+    return backtest_mod.run_all()

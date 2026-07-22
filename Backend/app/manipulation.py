@@ -1,0 +1,339 @@
+"""Market-manipulation / spoofing detection engine for MarketMind AI.
+
+Implements the "spoofing radar" concept: from a limit-order-book snapshot plus a
+short window of order-flow events it produces
+
+  * order-book imbalance          (bid vs ask resting size)
+  * cancel-to-trade ratio         (spoof orders are placed then pulled)
+  * depth asymmetry / phantom liq (size sitting away from mid that vanishes)
+  * a spoofing probability 0..100 (Bayesian fusion of the above signals)
+  * a SPOOF / SHEEP / WHALE sentiment triangle
+  * the perpetual funding rate
+
+The order book here is *simulated* and fully deterministic given a seed, so the
+whole thing runs offline and in CI. ``OrderBookFeed`` is the single seam where a
+real exchange websocket (e.g. Binance depth + aggTrade) would be plugged in:
+feed real ``OrderBookSnapshot`` / ``FlowEvent`` objects and every detector below
+works unchanged.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Literal
+
+import numpy as np
+
+from .quant import bayes_posterior, hawkes_intensity
+
+Side = Literal["bid", "ask"]
+
+
+# ---------------------------------------------------------------------------
+# Data model
+# ---------------------------------------------------------------------------
+
+@dataclass
+class OrderBookSnapshot:
+    """A single L2 snapshot: price levels and resting sizes for both sides."""
+    bid_prices: np.ndarray
+    bid_sizes: np.ndarray
+    ask_prices: np.ndarray
+    ask_sizes: np.ndarray
+    ts: float = 0.0
+
+    @property
+    def mid(self) -> float:
+        return float((self.bid_prices[0] + self.ask_prices[0]) / 2.0)
+
+    @property
+    def spread(self) -> float:
+        return float(self.ask_prices[0] - self.bid_prices[0])
+
+
+@dataclass
+class FlowEvent:
+    """An order-flow event over the observation window."""
+    ts: float
+    side: Side
+    action: Literal["add", "cancel", "trade"]
+    size: float
+    distance_ticks: float  # distance of the order from mid, in ticks
+
+
+# ---------------------------------------------------------------------------
+# Feature extraction
+# ---------------------------------------------------------------------------
+
+def order_book_imbalance(snap: OrderBookSnapshot, depth: int = 5) -> float:
+    """Volume imbalance in [-1, 1] over the top ``depth`` levels.
+
+        I = (sum bid_size - sum ask_size) / (sum bid_size + sum ask_size)
+
+    +1 = all resting size on the bid (buy pressure), -1 = all on the ask.
+    """
+    b = float(snap.bid_sizes[:depth].sum())
+    a = float(snap.ask_sizes[:depth].sum())
+    total = a + b
+    return 0.0 if total == 0 else (b - a) / total
+
+
+def cancel_trade_ratio(events: list[FlowEvent]) -> float:
+    """Ratio of cancelled size to traded size in the window.
+
+    Spoofers post large orders they never intend to fill, so a high ratio of
+    cancellations to actual trades is a classic spoofing tell.
+    """
+    cancelled = sum(e.size for e in events if e.action == "cancel")
+    traded = sum(e.size for e in events if e.action == "trade")
+    return float(cancelled / traded) if traded > 0 else float(cancelled)
+
+
+def phantom_liquidity(events: list[FlowEvent], near_ticks: float = 3.0) -> float:
+    """Fraction of *added-then-cancelled* size that sat away from the touch.
+
+    Genuine liquidity clusters near the mid; layered spoof walls sit a few ticks
+    back so they influence perception without much fill risk. Returns the share
+    of cancelled size that was resting beyond ``near_ticks`` from the mid.
+    """
+    far_cancel = sum(e.size for e in events if e.action == "cancel" and e.distance_ticks > near_ticks)
+    all_cancel = sum(e.size for e in events if e.action == "cancel")
+    return float(far_cancel / all_cancel) if all_cancel > 0 else 0.0
+
+
+def cancel_burst_intensity(events: list[FlowEvent], now: float, beta: float = 4.0) -> float:
+    """Self-exciting intensity of cancellations (Hawkes) at time ``now``.
+
+    Spoof cancellations arrive in tight bursts when the fake wall is pulled; a
+    Hawkes intensity spikes on that clustering far more than a Poisson count
+    would. Baseline mu and jump alpha are normalised per unit size.
+    """
+    cancel_times = [e.ts for e in events if e.action == "cancel"]
+    if not cancel_times:
+        return 0.0
+    return hawkes_intensity(now, cancel_times, mu=0.5, alpha=1.0, beta=beta)
+
+
+# ---------------------------------------------------------------------------
+# Spoofing probability — Bayesian fusion
+# ---------------------------------------------------------------------------
+
+@dataclass
+class SpoofingReport:
+    probability: int                 # 0..100, the "98/100" gauge
+    posterior: float                 # P(spoof | evidence) in [0,1]
+    imbalance: float
+    cancel_trade_ratio: float
+    phantom_liquidity: float
+    cancel_burst: float
+    funding_rate: float
+    sentiment: dict[str, float]      # SPOOF / SHEEP / WHALE weights, sum to 1
+    label: str                       # human-readable verdict
+    features: dict[str, float] = field(default_factory=dict)
+
+
+def _logistic(x: float) -> float:
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def spoofing_probability(
+    snap: OrderBookSnapshot,
+    events: list[FlowEvent],
+    funding_rate: float = 0.0,
+    prior: float = 0.15,
+) -> SpoofingReport:
+    """Fuse order-book + flow features into a spoofing probability 0..100.
+
+    A per-feature likelihood ratio feeds Bayes' theorem
+    (``P(H|E) = P(E|H)P(H)/P(E)``). Each feature maps to P(E|spoof) vs
+    P(E|~spoof) through a logistic response, the independent likelihoods are
+    multiplied, and the posterior is turned into the 0..100 gauge.
+    """
+    imb = order_book_imbalance(snap)
+    ctr = cancel_trade_ratio(events)
+    phantom = phantom_liquidity(events)
+    burst = cancel_burst_intensity(events, now=max((e.ts for e in events), default=0.0) + 1e-6)
+
+    # Feature -> P(evidence | spoof), P(evidence | not spoof).
+    # Strong one-sided imbalance, high cancel/trade, far phantom size and
+    # bursty cancels all raise the spoof likelihood.
+    lik_spoof = 1.0
+    lik_norm = 1.0
+
+    def contribute(score: float):
+        nonlocal lik_spoof, lik_norm
+        p_spoof = _logistic(score)
+        lik_spoof *= max(p_spoof, 1e-6)
+        lik_norm *= max(1.0 - p_spoof, 1e-6)
+
+    contribute(2.5 * abs(imb) - 1.0)        # lopsided book
+    contribute(1.4 * (ctr - 2.0))           # cancels >> trades
+    contribute(3.0 * (phantom - 0.5))       # size parked away from touch
+    contribute(0.9 * (burst - 2.0))         # bursty cancellations
+
+    evidence = lik_spoof * prior + lik_norm * (1.0 - prior)
+    posterior = bayes_posterior(lik_spoof, prior, evidence=evidence)
+    probability = int(round(posterior * 100))
+
+    sentiment = _sentiment_triangle(imb, ctr, phantom, snap, events)
+    label = (
+        "POSSIBLE SPOOFING" if probability >= 70
+        else "ELEVATED" if probability >= 40
+        else "CLEAN"
+    )
+
+    return SpoofingReport(
+        probability=probability,
+        posterior=float(posterior),
+        imbalance=round(imb, 4),
+        cancel_trade_ratio=round(ctr, 4),
+        phantom_liquidity=round(phantom, 4),
+        cancel_burst=round(burst, 4),
+        funding_rate=round(funding_rate, 6),
+        sentiment=sentiment,
+        label=label,
+        features={
+            "imbalance": round(imb, 4),
+            "cancel_trade_ratio": round(ctr, 4),
+            "phantom_liquidity": round(phantom, 4),
+            "cancel_burst": round(burst, 4),
+        },
+    )
+
+
+def _sentiment_triangle(
+    imbalance: float,
+    ctr: float,
+    phantom: float,
+    snap: OrderBookSnapshot,
+    events: list[FlowEvent],
+) -> dict[str, float]:
+    """Three-way market-character weights, normalised to sum to 1.
+
+      * SPOOF — manipulation footprint (cancels, phantom walls)
+      * SHEEP — retail/momentum chasing (trades following imbalance)
+      * WHALE — large genuine resting size executing patiently
+    """
+    traded = sum(e.size for e in events if e.action == "trade")
+    added = sum(e.size for e in events if e.action == "add")
+    top_size = float(snap.bid_sizes[0] + snap.ask_sizes[0])
+    avg_size = float((snap.bid_sizes.sum() + snap.ask_sizes.sum()) / (len(snap.bid_sizes) + len(snap.ask_sizes)))
+
+    spoof = 2.0 * phantom + 0.4 * min(ctr, 5.0)
+    sheep = 1.2 * abs(imbalance) + 0.6 * (traded / (added + 1e-9))
+    whale = 1.5 * (top_size / (avg_size + 1e-9) - 1.0)
+
+    raw = np.array([max(spoof, 0.0), max(sheep, 0.0), max(whale, 0.0)]) + 1e-6
+    w = raw / raw.sum()
+    return {"SPOOF": round(float(w[0]), 3), "SHEEP": round(float(w[1]), 3), "WHALE": round(float(w[2]), 3)}
+
+
+# ---------------------------------------------------------------------------
+# Simulated order-book feed (deterministic; the real-feed seam)
+# ---------------------------------------------------------------------------
+
+class OrderBookFeed:
+    """Deterministic synthetic order book + flow generator.
+
+    Produces a benign book most of the time and, when ``spoof`` is requested,
+    layers a large phantom wall a few ticks from the mid and pulls it in a burst
+    of cancellations — the exact behaviour the detector is meant to catch.
+
+    Swap this class for a real exchange adapter that yields the same
+    ``OrderBookSnapshot`` / ``FlowEvent`` objects and nothing downstream changes.
+    """
+
+    def __init__(self, mid: float = 30000.0, tick: float = 1.0, seed: int = 0):
+        self.mid = mid
+        self.tick = tick
+        self.rng = np.random.default_rng(seed)
+
+    def _base_book(self, mid: float, levels: int = 10) -> OrderBookSnapshot:
+        bid_prices = mid - self.tick * (np.arange(levels) + 1)
+        ask_prices = mid + self.tick * (np.arange(levels) + 1)
+        # Genuine liquidity decays with distance from the touch.
+        decay = np.exp(-0.15 * np.arange(levels))
+        bid_sizes = self.rng.uniform(0.8, 1.2, levels) * 5.0 * decay
+        ask_sizes = self.rng.uniform(0.8, 1.2, levels) * 5.0 * decay
+        return OrderBookSnapshot(bid_prices, bid_sizes, ask_prices, ask_sizes, ts=0.0)
+
+    def sample(
+        self,
+        spoof: bool,
+        side: Side = "bid",
+        strength: float | None = None,
+    ) -> tuple[OrderBookSnapshot, list[FlowEvent]]:
+        """Return one (snapshot, window-of-flow-events) pair.
+
+        ``strength`` in [0, 1] controls how blatant a spoof is: weak spoofs use
+        a smaller wall parked closer to the touch and pulled less abruptly, so
+        their footprint overlaps with honest activity. When ``strength`` is None
+        it is drawn uniformly, which is what makes the backtest a genuine test
+        rather than a trivially separable one.
+        """
+        if strength is None:
+            strength = float(self.rng.uniform(0.25, 1.0))
+        snap = self._base_book(self.mid)
+        events: list[FlowEvent] = []
+        t = 0.0
+
+        # Benign background flow: adds and trades near the touch.
+        n_bg = int(self.rng.integers(8, 16))
+        for _ in range(n_bg):
+            t += float(self.rng.exponential(0.4))
+            s: Side = "bid" if self.rng.random() < 0.5 else "ask"
+            action = "trade" if self.rng.random() < 0.6 else "add"
+            events.append(FlowEvent(t, s, action, float(self.rng.uniform(0.2, 1.0)),
+                                    float(self.rng.uniform(0.0, 2.0))))
+
+        if spoof:
+            # Weak spoofs sit closer to the touch (2 ticks) with a smaller wall
+            # and a looser cancel burst; strong spoofs sit ~5 ticks back with a
+            # big wall pulled tightly.
+            wall_level = int(round(2 + 3 * strength))
+            wall_size = float(self.rng.uniform(8.0, 20.0) + 45.0 * strength)
+            if side == "bid":
+                snap.bid_sizes[wall_level] += wall_size
+            else:
+                snap.ask_sizes[wall_level] += wall_size
+            events.append(FlowEvent(t + 0.05, side, "add", wall_size, float(wall_level + 1)))
+            burst_t = t + float(self.rng.uniform(0.3, 0.8))
+            n_cancel = int(self.rng.integers(3, 8))
+            burst_scale = 0.05 + 0.25 * (1.0 - strength)  # weaker spoof = looser burst
+            for _ in range(n_cancel):
+                burst_t += float(self.rng.exponential(burst_scale))
+                events.append(FlowEvent(burst_t, side, "cancel",
+                                        wall_size / n_cancel, float(wall_level + 1)))
+        else:
+            # Honest cancellations near the touch.
+            n_honest = int(self.rng.integers(0, 4))
+            for _ in range(n_honest):
+                t += float(self.rng.exponential(0.5))
+                events.append(FlowEvent(t, "bid" if self.rng.random() < 0.5 else "ask",
+                                        "cancel", float(self.rng.uniform(0.3, 1.5)),
+                                        float(self.rng.uniform(0.0, 3.5))))
+            # ~18% of clean windows are legitimate market-maker *repricing*: a
+            # genuine order posted a few ticks back then cancelled in a burst as
+            # the quote is chased. It looks spoof-like (far cancels, bursty) and
+            # is the main source of realistic false positives.
+            if self.rng.random() < 0.18:
+                level = int(self.rng.integers(2, 5))
+                size = float(self.rng.uniform(6.0, 18.0))
+                s2: Side = "bid" if self.rng.random() < 0.5 else "ask"
+                if s2 == "bid":
+                    snap.bid_sizes[level] += size
+                else:
+                    snap.ask_sizes[level] += size
+                events.append(FlowEvent(t + 0.1, s2, "add", size, float(level + 1)))
+                bt = t + float(self.rng.uniform(0.4, 1.0))
+                nc = int(self.rng.integers(2, 5))
+                for _ in range(nc):
+                    bt += float(self.rng.exponential(0.15))
+                    events.append(FlowEvent(bt, s2, "cancel", size / nc, float(level + 1)))
+
+        events.sort(key=lambda e: e.ts)
+        return snap, events
+
+    def funding_rate(self) -> float:
+        """Synthetic 8h perpetual funding rate, small and mean-reverting."""
+        return float(self.rng.normal(0.0001, 0.0003))

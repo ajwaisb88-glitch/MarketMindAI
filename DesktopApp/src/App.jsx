@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
+import ManipulationRadar from './ManipulationRadar';
 
 const LOCAL_API = 'http://127.0.0.1:8000';
 const API_SETTINGS_KEY = 'mm_api_settings_v1';
@@ -189,6 +190,9 @@ export default function App() {
             {loading ? 'Loading…' : 'Predict now'}
           </button>
         </section>
+
+        {/* ── Manipulation radar ── */}
+        <ManipulationRadar apiBase={apiBase} />
 
         {/* ── Result ── */}
         {error && <div className="card error">⚠ {error}</div>}
