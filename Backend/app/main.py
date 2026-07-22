@@ -11,7 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app import backtest as backtest_mod
 from app import quant
 from app import scalping as scalping_mod
-from app.manipulation import OrderBookFeed, spoofing_probability
+from app.manipulation import (
+    MARKET_PROFILES,
+    OrderBookFeed,
+    scan_assets,
+    spoofing_probability,
+)
 
 logger = logging.getLogger("marketmind")
 
@@ -180,7 +185,7 @@ async def manipulation(
     """
     import random
 
-    feed = OrderBookFeed(seed=seed if seed is not None else random.randint(0, 10_000))
+    feed = OrderBookFeed.for_asset(asset, seed=seed if seed is not None else random.randint(0, 10_000))
     is_spoof = feed.rng.random() < 0.4 if spoof is None else spoof
     side = "bid" if feed.rng.random() < 0.5 else "ask"
     snap, events = feed.sample(spoof=is_spoof, side=side)
@@ -193,16 +198,29 @@ async def manipulation(
         "probability": report.probability,
         "label": report.label,
         "posterior": round(report.posterior, 4),
+        "pressure_side": report.pressure_side,
+        "predicted_move": report.predicted_move,
         "funding_rate": report.funding_rate,
         "features": report.features,
         "sentiment": report.sentiment,
         "order_book": {
-            "bid_prices": snap.bid_prices.round(2).tolist(),
+            "bid_prices": snap.bid_prices.round(6).tolist(),
             "bid_sizes": snap.bid_sizes.round(3).tolist(),
-            "ask_prices": snap.ask_prices.round(2).tolist(),
+            "ask_prices": snap.ask_prices.round(6).tolist(),
             "ask_sizes": snap.ask_sizes.round(3).tolist(),
         },
     }
+
+
+@app.get("/manipulation/scan")
+async def manipulation_scan(seed: int = 0):
+    """Spoofing radar across every supported asset, ranked highest-risk first.
+
+    A single watchlist call that scans crypto, metals, FX and indices uniformly —
+    the "use all coins" view. Each row carries the probability, the fade
+    direction and the sentiment triangle for that instrument.
+    """
+    return {"assets": sorted(MARKET_PROFILES.keys()), "scan": scan_assets(seed=seed)}
 
 
 @app.get("/quant/kelly")
@@ -268,3 +286,17 @@ async def scalping_signal(
     result = scalping_mod.backtest_from_signal(p_impact=p_impact, paths=paths)
     result["impact_sweep"] = scalping_mod.impact_sweep(paths=min(paths, 4000))
     return result
+
+
+@app.get("/scalping/scan")
+async def scalping_scan(
+    p_impact: float = Query(0.7, ge=0.0, le=1.0),
+    paths: int = Query(3000, ge=100, le=20000),
+):
+    """Signal-driven scalp backtest for every asset, ranked by P(reach $1,000).
+
+    Each instrument uses its own scalp width, so the "all coins" view exposes how
+    tight-scalp majors (FX, indices) bleed to leverage/fees while wider markets
+    keep more of the edge.
+    """
+    return {"p_impact": p_impact, "scan": scalping_mod.scan_assets_scalping(p_impact=p_impact, paths=paths)}

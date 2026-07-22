@@ -255,6 +255,29 @@ def _sentiment_triangle(
 # Simulated order-book feed (deterministic; the real-feed seam)
 # ---------------------------------------------------------------------------
 
+# Per-asset market profiles so the radar runs on every instrument in the app,
+# each with a realistic price, tick size and default scalp width. ``crypto``
+# marks perpetuals that carry a funding rate. Anything not listed falls back to
+# DEFAULT_PROFILE, so the engine never fails on an unknown symbol.
+MARKET_PROFILES: dict[str, dict] = {
+    "btc":    {"mid": 60000.0, "tick": 0.5,     "crypto": True,  "scalp_move_pct": 0.30},
+    "eth":    {"mid": 3000.0,  "tick": 0.05,    "crypto": True,  "scalp_move_pct": 0.35},
+    "gold":   {"mid": 2400.0,  "tick": 0.1,     "crypto": False, "scalp_move_pct": 0.20},
+    "silver": {"mid": 30.0,    "tick": 0.005,   "crypto": False, "scalp_move_pct": 0.30},
+    "oil":    {"mid": 80.0,    "tick": 0.01,    "crypto": False, "scalp_move_pct": 0.40},
+    "eurusd": {"mid": 1.08,    "tick": 0.00001, "crypto": False, "scalp_move_pct": 0.10},
+    "gbpusd": {"mid": 1.27,    "tick": 0.00001, "crypto": False, "scalp_move_pct": 0.12},
+    "sp500":  {"mid": 5500.0,  "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.15},
+    "nasdaq": {"mid": 19000.0, "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.18},
+}
+DEFAULT_PROFILE = {"mid": 100.0, "tick": 0.01, "crypto": False, "scalp_move_pct": 0.30}
+
+
+def market_profile(asset: str) -> dict:
+    """Look up an asset's market profile, falling back to a safe default."""
+    return MARKET_PROFILES.get(asset.lower(), DEFAULT_PROFILE)
+
+
 class OrderBookFeed:
     """Deterministic synthetic order book + flow generator.
 
@@ -266,10 +289,20 @@ class OrderBookFeed:
     ``OrderBookSnapshot`` / ``FlowEvent`` objects and nothing downstream changes.
     """
 
-    def __init__(self, mid: float = 30000.0, tick: float = 1.0, seed: int = 0):
+    def __init__(self, mid: float = 30000.0, tick: float = 1.0, seed: int = 0,
+                 asset: str | None = None, crypto: bool = True):
         self.mid = mid
         self.tick = tick
+        self.asset = asset
+        self.crypto = crypto
         self.rng = np.random.default_rng(seed)
+
+    @classmethod
+    def for_asset(cls, asset: str, seed: int = 0) -> "OrderBookFeed":
+        """Build a feed configured for a specific instrument's price/tick."""
+        p = market_profile(asset)
+        return cls(mid=p["mid"], tick=p["tick"], seed=seed, asset=asset.lower(),
+                   crypto=p["crypto"])
 
     def _base_book(self, mid: float, levels: int = 10) -> OrderBookSnapshot:
         bid_prices = mid - self.tick * (np.arange(levels) + 1)
@@ -358,5 +391,41 @@ class OrderBookFeed:
         return snap, events
 
     def funding_rate(self) -> float:
-        """Synthetic 8h perpetual funding rate, small and mean-reverting."""
+        """Synthetic 8h perpetual funding rate. Only crypto perps have funding."""
+        if not self.crypto:
+            return 0.0
         return float(self.rng.normal(0.0001, 0.0003))
+
+
+def scan_assets(
+    assets: list[str] | None = None,
+    seed: int = 0,
+    spoof: bool | None = None,
+) -> list[dict]:
+    """Run the spoofing radar across every requested asset and rank by risk.
+
+    Each asset gets its own profile-configured feed, so the scan works uniformly
+    for crypto, metals, FX and indices. Returns one compact report per asset,
+    sorted by spoofing probability (highest first) — the "watchlist" view.
+    """
+    if assets is None:
+        assets = list(MARKET_PROFILES.keys())
+    reports: list[dict] = []
+    for i, asset in enumerate(assets):
+        feed = OrderBookFeed.for_asset(asset, seed=seed + i)
+        is_spoof = (feed.rng.random() < 0.4) if spoof is None else spoof
+        side: Side = "bid" if feed.rng.random() < 0.5 else "ask"
+        snap, events = feed.sample(spoof=is_spoof, side=side)
+        r = spoofing_probability(snap, events, funding_rate=feed.funding_rate())
+        reports.append({
+            "asset": asset.lower(),
+            "probability": r.probability,
+            "label": r.label,
+            "pressure_side": r.pressure_side,
+            "predicted_move": r.predicted_move,
+            "funding_rate": r.funding_rate,
+            "sentiment": r.sentiment,
+            "mid": round(snap.mid, 6),
+        })
+    reports.sort(key=lambda d: d["probability"], reverse=True)
+    return reports

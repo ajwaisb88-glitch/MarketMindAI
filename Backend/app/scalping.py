@@ -30,7 +30,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .manipulation import OrderBookFeed, spoofing_probability
+from .manipulation import OrderBookFeed, market_profile, spoofing_probability
 from .quant import fractional_kelly
 
 
@@ -173,6 +173,43 @@ def scalp_size_sweep(cfg: ScalpConfig | None = None, paths: int = 4000, seed: in
 # ---------------------------------------------------------------------------
 # End-to-end: measure the edge from the detector instead of assuming it
 # ---------------------------------------------------------------------------
+
+def config_for_asset(asset: str, **overrides) -> ScalpConfig:
+    """Scalp config seeded from an asset's profile (its typical scalp width)."""
+    p = market_profile(asset)
+    base = {"scalp_move_pct": p["scalp_move_pct"]}
+    base.update(overrides)
+    return ScalpConfig(**base)
+
+
+def scan_assets_scalping(assets: list[str] | None = None, p_impact: float = 0.70,
+                         paths: int = 3000, seed: int = 0) -> list[dict]:
+    """Run the signal-driven scalp backtest for every asset, ranked by upside.
+
+    Uses each asset's own scalp width, so tighter instruments (FX, gold) carry
+    more leverage/fee drag than wider ones — the "all coins" strategy view.
+    """
+    from .manipulation import MARKET_PROFILES
+    if assets is None:
+        assets = list(MARKET_PROFILES.keys())
+    rows = []
+    for i, asset in enumerate(assets):
+        cfg = config_for_asset(asset, edge=0.5)  # edge is overwritten below
+        signal = measure_signal_edge(p_impact=p_impact, seed=seed + i)
+        cfg = config_for_asset(asset, edge=max(min(signal["measured_edge"], 0.7), 0.5))
+        strat = simulate_paths(cfg, paths=paths, seed=seed + i)
+        rows.append({
+            "asset": asset.lower(),
+            "scalp_move_pct": cfg.scalp_move_pct,
+            "implied_leverage": strat["implied_leverage"],
+            "measured_edge": signal["measured_edge"],
+            "median_final_equity": strat["median_final_equity"],
+            "prob_reach_1000": strat["prob_reach_1000"],
+            "prob_ruin": strat["prob_ruin"],
+        })
+    rows.sort(key=lambda d: d["prob_reach_1000"], reverse=True)
+    return rows
+
 
 def measure_signal_edge(
     p_impact: float = 0.70,

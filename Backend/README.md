@@ -104,6 +104,27 @@ a tradable edge depends entirely on `p_impact` — the one assumption no backtes
 can settle, only live forward-testing on real order-book data can.
 Endpoint: `GET /scalping/signal?p_impact=0.7`.
 
+### All assets
+
+Every instrument in the app (btc, eth, gold, silver, oil, eurusd, gbpusd, sp500,
+nasdaq) has a market profile in `manipulation.MARKET_PROFILES` — realistic price,
+tick size, a `crypto` flag (only perps carry a funding rate) and a default scalp
+width. The radar and the scalp backtest run uniformly across all of them:
+
+- `GET /manipulation/scan` — spoofing radar over every asset, ranked highest-risk
+  first (the watchlist view).
+- `GET /scalping/scan?p_impact=0.7` — signal-driven scalp backtest per asset. The
+  same edge produces very different outcomes because each asset's scalp width sets
+  its leverage: wide markets (oil, 0.4% ≈ 12×) keep the edge, while tight majors
+  (eurusd, 0.1% ≈ 50×) bleed to fees. Unknown symbols fall back to a safe default
+  so the engine never errors.
+
+> Live exchange feed: the seam is `OrderBookFeed` — swap it for a real depth/trade
+> adapter and everything downstream is unchanged. Note that a live feed needs an
+> environment whose network policy allows the exchange host; the default policy in
+> Claude Code web sessions blocks exchange APIs (only package registries are
+> reachable), so the bundled feed is simulated.
+
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`
 - Add authentication and API token handling

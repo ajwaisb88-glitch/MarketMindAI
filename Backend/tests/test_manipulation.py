@@ -82,3 +82,33 @@ def test_feed_is_deterministic():
     b = m.OrderBookFeed(seed=42).sample(spoof=True, strength=0.7)
     assert np.allclose(a[0].bid_sizes, b[0].bid_sizes)
     assert len(a[1]) == len(b[1])
+
+
+def test_for_asset_uses_profile_and_unknown_falls_back():
+    btc = m.OrderBookFeed.for_asset("btc", seed=0)
+    assert btc.mid == m.MARKET_PROFILES["btc"]["mid"]
+    assert btc.crypto is True
+    unknown = m.OrderBookFeed.for_asset("dogecoin_xyz", seed=0)  # not in the map
+    assert unknown.mid == m.DEFAULT_PROFILE["mid"]
+
+
+def test_non_crypto_has_no_funding():
+    assert m.OrderBookFeed.for_asset("gold", seed=0).funding_rate() == 0.0
+    assert m.OrderBookFeed.for_asset("eurusd", seed=0).funding_rate() == 0.0
+
+
+def test_scan_all_assets_is_stable_and_ranked():
+    reports = m.scan_assets(seed=3)
+    assert len(reports) == len(m.MARKET_PROFILES)
+    probs = [r["probability"] for r in reports]
+    assert probs == sorted(probs, reverse=True)      # ranked highest-risk first
+    for r in reports:
+        assert 0 <= r["probability"] <= 100
+        assert abs(sum(r["sentiment"].values()) - 1.0) < 0.01  # 3-dp rounding
+    # deterministic
+    assert [r["asset"] for r in reports] == [r["asset"] for r in m.scan_assets(seed=3)]
+
+
+def test_scan_runs_for_every_supported_asset_without_error():
+    scanned = {r["asset"] for r in m.scan_assets(seed=0)}
+    assert scanned == set(m.MARKET_PROFILES.keys())

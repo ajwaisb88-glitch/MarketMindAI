@@ -75,3 +75,21 @@ def test_impact_sweep_is_monotonic_in_edge():
     rows = scalping.impact_sweep(paths=800, seed=0)
     edges = [r["measured_edge"] for r in rows]
     assert edges == sorted(edges)
+
+
+def test_config_for_asset_uses_profile_width():
+    from app.manipulation import market_profile
+    cfg = scalping.config_for_asset("gold")
+    assert cfg.scalp_move_pct == market_profile("gold")["scalp_move_pct"]
+
+
+def test_scalping_scan_covers_all_assets():
+    from app.manipulation import MARKET_PROFILES
+    rows = scalping.scan_assets_scalping(paths=600, seed=0)
+    assert {r["asset"] for r in rows} == set(MARKET_PROFILES.keys())
+    # ranked by upside, all probabilities valid
+    reach = [r["prob_reach_1000"] for r in rows]
+    assert reach == sorted(reach, reverse=True)
+    for r in rows:
+        assert 0.0 <= r["prob_reach_1000"] <= 1.0
+        assert 0.0 <= r["prob_ruin"] <= 1.0
