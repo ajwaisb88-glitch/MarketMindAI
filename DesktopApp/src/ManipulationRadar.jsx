@@ -3,6 +3,29 @@ import React, { useState, useCallback } from 'react';
 // Colours for the SPOOF / SHEEP / WHALE sentiment triangle.
 const SENTIMENT_COLORS = { SPOOF: '#f85149', SHEEP: '#e3b341', WHALE: '#58a6ff' };
 
+// Signal grade → colour. A-tier green, B/C amber, D/F/NO-TRADE muted red/grey.
+const GRADE_COLORS = {
+  'A+': '#3fb950', A1: '#4cc266', A: '#6bd07f', B: '#e3b341',
+  C: '#e08c3a', D: '#f85149', F: '#8b949e', 'NO-TRADE': '#6e7681',
+};
+
+function GradeBadge({ grade, score }) {
+  const color = GRADE_COLORS[grade] ?? '#8b949e';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{
+        minWidth: 58, textAlign: 'center', background: color, color: '#0d1117',
+        fontWeight: 800, fontSize: grade === 'NO-TRADE' ? 12 : 22, padding: '6px 10px',
+        borderRadius: 10, letterSpacing: 0.5,
+      }}>{grade}</div>
+      <div>
+        <div style={{ fontWeight: 700 }}>Signal grade</div>
+        <div className="sub">{grade === 'NO-TRADE' ? 'no actionable signal' : `score ${score}/100`}</div>
+      </div>
+    </div>
+  );
+}
+
 function Gauge({ value, label }) {
   const pct = Math.max(0, Math.min(100, value ?? 0));
   const color = pct >= 70 ? '#f85149' : pct >= 40 ? '#e3b341' : '#3fb950';
@@ -91,7 +114,25 @@ export default function ManipulationRadar({ apiBase }) {
 
       {data && (
         <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <GradeBadge grade={data.grade} score={data.score} />
+            {data.grade !== 'NO-TRADE' && data.direction !== 'flat' && (
+              <div style={{
+                fontWeight: 700, fontSize: 13, padding: '4px 12px', borderRadius: 8,
+                border: `1px solid ${data.direction === 'long' ? '#3fb950' : '#f85149'}`,
+                color: data.direction === 'long' ? '#3fb950' : '#f85149',
+              }}>
+                {data.direction === 'long' ? '▲ LONG' : '▼ SHORT'} bias
+              </div>
+            )}
+          </div>
           <Gauge value={data.probability} label={data.label} />
+          {data.grade !== 'NO-TRADE' && (
+            <div style={{ display: 'flex', gap: 20, fontSize: 13 }}>
+              <Row label="Conviction" value={`${data.conviction}/100`} />
+              <Row label="Tradability" value={`${data.tradability}/100`} />
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 220 }}>
               <div className="sub" style={{ marginBottom: 6 }}>Sentiment triangle</div>
@@ -111,7 +152,7 @@ export default function ManipulationRadar({ apiBase }) {
             <Row label="Funding (8h)" value={data.funding_rate != null ? `${(data.funding_rate * 100).toFixed(4)}%` : '-'} />
             <Row label="Mid" value={data.mid} />
           </div>
-          <div className="sub">scenario: {data.scenario} · not financial advice</div>
+          <div className="sub">scenario: {data.scenario} · grade = conviction × tradability · not financial advice</div>
         </>
       )}
     </section>

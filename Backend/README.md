@@ -125,6 +125,33 @@ width. The radar and the scalp backtest run uniformly across all of them:
 > Claude Code web sessions blocks exchange APIs (only package registries are
 > reachable), so the bundled feed is simulated.
 
+### Signal grading (A+ / A1 / A / B / C / D / F)
+
+`grade_signal()` turns a raw detection into a tradeable grade by fusing two
+independent things:
+
+- **conviction** — the 0–100 spoof probability (how sure the radar is), and
+- **tradability** — `tradability_score(asset)`: how much of an edge survives the
+  asset's leverage/fee drag. Tight-scalp instruments need huge leverage, so their
+  fee bleed caps the grade no matter how strong the signal.
+
+Tradability *gates* conviction (`score = conviction × (0.45 + 0.55·tradability)`
+minus a funding penalty), so a blatant spoof on an un-tradable book is capped:
+
+| Asset | Scalp | Tradability | Grade @100 conviction |
+|-------|-------|-------------|-----------------------|
+| oil | 0.45% | 75 | **A+** |
+| gold / silver | 0.40% | 72 | **A1** |
+| btc / nasdaq | 0.30% | 62 | **A1** |
+| sp500 | 0.25% | 54 | **A1** |
+| eurusd / gbpusd | 0.10–0.12% | 0–5 | **C** |
+
+Ladder (best→worst): `A+` elite · `A1` excellent · `A` strong · `B` good · `C`
+fair · `D` weak · `F` avoid · `NO-TRADE` when the book is clean. Every scan row
+and the single `/manipulation` response carry `grade`, `score`, `conviction`,
+`tradability` and a `direction` (long/short). The desktop Manipulation Radar shows
+the grade as a coloured badge.
+
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`
 - Add authentication and API token handling

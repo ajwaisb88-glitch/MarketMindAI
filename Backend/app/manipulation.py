@@ -262,13 +262,13 @@ def _sentiment_triangle(
 MARKET_PROFILES: dict[str, dict] = {
     "btc":    {"mid": 60000.0, "tick": 0.5,     "crypto": True,  "scalp_move_pct": 0.30},
     "eth":    {"mid": 3000.0,  "tick": 0.05,    "crypto": True,  "scalp_move_pct": 0.35},
-    "gold":   {"mid": 2400.0,  "tick": 0.1,     "crypto": False, "scalp_move_pct": 0.20},
-    "silver": {"mid": 30.0,    "tick": 0.005,   "crypto": False, "scalp_move_pct": 0.30},
-    "oil":    {"mid": 80.0,    "tick": 0.01,    "crypto": False, "scalp_move_pct": 0.40},
+    "gold":   {"mid": 2400.0,  "tick": 0.1,     "crypto": False, "scalp_move_pct": 0.40},
+    "silver": {"mid": 30.0,    "tick": 0.005,   "crypto": False, "scalp_move_pct": 0.40},
+    "oil":    {"mid": 80.0,    "tick": 0.01,    "crypto": False, "scalp_move_pct": 0.45},
     "eurusd": {"mid": 1.08,    "tick": 0.00001, "crypto": False, "scalp_move_pct": 0.10},
     "gbpusd": {"mid": 1.27,    "tick": 0.00001, "crypto": False, "scalp_move_pct": 0.12},
-    "sp500":  {"mid": 5500.0,  "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.15},
-    "nasdaq": {"mid": 19000.0, "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.18},
+    "sp500":  {"mid": 5500.0,  "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.25},
+    "nasdaq": {"mid": 19000.0, "tick": 0.25,    "crypto": False, "scalp_move_pct": 0.30},
 }
 DEFAULT_PROFILE = {"mid": 100.0, "tick": 0.01, "crypto": False, "scalp_move_pct": 0.30}
 
@@ -276,6 +276,81 @@ DEFAULT_PROFILE = {"mid": 100.0, "tick": 0.01, "crypto": False, "scalp_move_pct"
 def market_profile(asset: str) -> dict:
     """Look up an asset's market profile, falling back to a safe default."""
     return MARKET_PROFILES.get(asset.lower(), DEFAULT_PROFILE)
+
+
+# ---------------------------------------------------------------------------
+# Signal grading — A+ / A1 / A / B / C / D / F
+# ---------------------------------------------------------------------------
+# A grade fuses two independent things a trader actually cares about:
+#   * conviction  — how strongly the radar thinks this is real manipulation
+#                   (the 0..100 spoof probability), and
+#   * tradability — whether the asset's scalp geometry keeps the edge after
+#                   leverage & fees. A tight-scalp instrument (FX majors) needs
+#                   huge leverage, so its fee drag guts even a high-conviction
+#                   signal — the "gold at 0.2%" lesson, generalised.
+# Ladder (highest first): A+ elite, A1 excellent, A strong, B good, C fair,
+# D weak, F avoid. "NO-TRADE" is returned when there is no actionable signal.
+
+_GRADE_BANDS: list[tuple[float, str]] = [
+    (86.0, "A+"), (74.0, "A1"), (62.0, "A"), (48.0, "B"),
+    (34.0, "C"), (20.0, "D"), (0.0, "F"),
+]
+
+
+def _letter(score: float) -> str:
+    for threshold, grade in _GRADE_BANDS:
+        if score >= threshold:
+            return grade
+    return "F"
+
+
+def tradability_score(asset: str, risk: float = 0.05, fee_bps: float = 6.0,
+                      max_leverage: float = 50.0) -> float:
+    """0..100 structural score: how much of an edge survives this asset's fees.
+
+    Leverage needed = risk / scalp_move, the round-trip fee is charged on that
+    leveraged notional, and the score falls linearly with the resulting per-trade
+    cost. Wide-scalp markets (low leverage) score high; tight FX majors score low.
+    """
+    move = market_profile(asset)["scalp_move_pct"] / 100.0
+    lev = min(risk / move, max_leverage)
+    cost_pct = (fee_bps / 1e4) * lev * 100.0
+    return float(max(0.0, min(100.0, 100.0 - cost_pct * 38.0)))
+
+
+def grade_signal(
+    probability: int,
+    asset: str,
+    predicted_move: int,
+    funding_rate: float = 0.0,
+    min_conviction: int = 40,
+) -> dict:
+    """Grade one setup A+..F from detection conviction and asset tradability.
+
+    Returns ``NO-TRADE`` when the radar sees no actionable manipulation
+    (probability below ``min_conviction`` or no inferred direction) — a clean
+    book is not a trade, however liquid the instrument.
+    """
+    trad = tradability_score(asset)
+    if predicted_move == 0 or probability < min_conviction:
+        return {
+            "grade": "NO-TRADE",
+            "score": 0.0,
+            "conviction": int(probability),
+            "tradability": round(trad, 1),
+            "note": "no actionable manipulation signal",
+        }
+    # Tradability gates conviction: a strong signal on an un-tradable book is
+    # capped, because the fees will eat the move.
+    funding_penalty = min(abs(funding_rate) * 800.0, 8.0)
+    score = probability * (0.45 + 0.55 * trad / 100.0) - funding_penalty
+    score = float(max(0.0, min(100.0, score)))
+    return {
+        "grade": _letter(score),
+        "score": round(score, 1),
+        "conviction": int(probability),
+        "tradability": round(trad, 1),
+    }
 
 
 class OrderBookFeed:
@@ -417,15 +492,22 @@ def scan_assets(
         side: Side = "bid" if feed.rng.random() < 0.5 else "ask"
         snap, events = feed.sample(spoof=is_spoof, side=side)
         r = spoofing_probability(snap, events, funding_rate=feed.funding_rate())
+        grade = grade_signal(r.probability, asset, r.predicted_move, r.funding_rate)
         reports.append({
             "asset": asset.lower(),
+            "grade": grade["grade"],
+            "score": grade["score"],
+            "conviction": grade["conviction"],
+            "tradability": grade["tradability"],
             "probability": r.probability,
             "label": r.label,
             "pressure_side": r.pressure_side,
             "predicted_move": r.predicted_move,
+            "direction": "long" if r.predicted_move > 0 else "short" if r.predicted_move < 0 else "flat",
             "funding_rate": r.funding_rate,
             "sentiment": r.sentiment,
             "mid": round(snap.mid, 6),
         })
-    reports.sort(key=lambda d: d["probability"], reverse=True)
+    # Rank actionable, higher-graded setups first; NO-TRADE rows sink to the bottom.
+    reports.sort(key=lambda d: (d["grade"] != "NO-TRADE", d["score"]), reverse=True)
     return reports

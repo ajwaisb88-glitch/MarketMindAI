@@ -112,3 +112,51 @@ def test_scan_all_assets_is_stable_and_ranked():
 def test_scan_runs_for_every_supported_asset_without_error():
     scanned = {r["asset"] for r in m.scan_assets(seed=0)}
     assert scanned == set(m.MARKET_PROFILES.keys())
+
+
+# --- signal grading -------------------------------------------------------
+
+def test_letter_bands_are_ordered():
+    assert m._letter(95) == "A+"
+    assert m._letter(80) == "A1"
+    assert m._letter(65) == "A"
+    assert m._letter(50) == "B"
+    assert m._letter(40) == "C"
+    assert m._letter(25) == "D"
+    assert m._letter(5) == "F"
+
+
+def test_tradability_wide_beats_tight():
+    # oil (wide 0.45% scalp) is far more tradable than eurusd (0.1%).
+    assert m.tradability_score("oil") > m.tradability_score("gold") > m.tradability_score("eurusd")
+    assert m.tradability_score("eurusd") < 20
+
+
+def test_no_signal_is_no_trade():
+    assert m.grade_signal(0, "btc", 0)["grade"] == "NO-TRADE"        # clean book
+    assert m.grade_signal(100, "btc", 0)["grade"] == "NO-TRADE"      # no direction
+    assert m.grade_signal(20, "btc", -1)["grade"] == "NO-TRADE"      # weak conviction
+
+
+def test_tradability_caps_a_strong_signal():
+    # Same max conviction: a wide market grades far above an un-tradable one.
+    oil = m.grade_signal(100, "oil", -1)
+    eur = m.grade_signal(100, "eurusd", 1)
+    assert oil["score"] > eur["score"]
+    assert oil["grade"] == "A+"
+    assert eur["grade"] in {"C", "D", "F"}
+
+
+def test_gold_profile_fix_gives_tradable_ceiling():
+    # After widening gold's default scalp, a strong gold signal is at least A1.
+    assert m.grade_signal(100, "gold", -1)["grade"] in {"A+", "A1"}
+
+
+def test_scan_includes_grade_and_sinks_no_trades():
+    reports = m.scan_assets(seed=7)
+    assert all("grade" in r and "direction" in r for r in reports)
+    grades = [r["grade"] for r in reports]
+    # every NO-TRADE row comes after every graded row
+    actionable = [i for i, g in enumerate(grades) if g != "NO-TRADE"]
+    no_trade = [i for i, g in enumerate(grades) if g == "NO-TRADE"]
+    assert not actionable or not no_trade or max(actionable) < min(no_trade)

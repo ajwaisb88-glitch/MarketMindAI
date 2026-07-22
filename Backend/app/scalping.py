@@ -30,7 +30,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .manipulation import OrderBookFeed, market_profile, spoofing_probability
+from .manipulation import (
+    OrderBookFeed,
+    market_profile,
+    spoofing_probability,
+    tradability_score,
+)
 from .quant import fractional_kelly
 
 
@@ -202,6 +207,7 @@ def scan_assets_scalping(assets: list[str] | None = None, p_impact: float = 0.70
             "asset": asset.lower(),
             "scalp_move_pct": cfg.scalp_move_pct,
             "implied_leverage": strat["implied_leverage"],
+            "tradability": round(tradability_score(asset), 1),
             "measured_edge": signal["measured_edge"],
             "median_final_equity": strat["median_final_equity"],
             "prob_reach_1000": strat["prob_reach_1000"],

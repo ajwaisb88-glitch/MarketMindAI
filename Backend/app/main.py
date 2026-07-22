@@ -14,6 +14,7 @@ from app import scalping as scalping_mod
 from app.manipulation import (
     MARKET_PROFILES,
     OrderBookFeed,
+    grade_signal,
     scan_assets,
     spoofing_probability,
 )
@@ -190,16 +191,22 @@ async def manipulation(
     side = "bid" if feed.rng.random() < 0.5 else "ask"
     snap, events = feed.sample(spoof=is_spoof, side=side)
     report = spoofing_probability(snap, events, funding_rate=feed.funding_rate())
+    grade = grade_signal(report.probability, asset, report.predicted_move, report.funding_rate)
     return {
         "asset": asset.lower(),
         "scenario": "spoof" if is_spoof else "clean",
         "mid": snap.mid,
         "spread": snap.spread,
+        "grade": grade["grade"],
+        "score": grade["score"],
+        "conviction": grade["conviction"],
+        "tradability": grade["tradability"],
         "probability": report.probability,
         "label": report.label,
         "posterior": round(report.posterior, 4),
         "pressure_side": report.pressure_side,
         "predicted_move": report.predicted_move,
+        "direction": "long" if report.predicted_move > 0 else "short" if report.predicted_move < 0 else "flat",
         "funding_rate": report.funding_rate,
         "features": report.features,
         "sentiment": report.sentiment,
