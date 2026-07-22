@@ -16,6 +16,7 @@ from app.manipulation import (
     OrderBookFeed,
     build_trade_plan,
     estimate_signals_per_day,
+    grade_rank,
     grade_signal,
     scan_assets,
     spoofing_probability,
@@ -45,6 +46,10 @@ origins = [
     "http://127.0.0.1:4000",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:5173",   # Vite dev server
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",   # Vite preview
+    "http://127.0.0.1:4173",
 ]
 
 app.add_middleware(
@@ -174,21 +179,9 @@ async def predict(asset: str = "gold"):
 # Manipulation radar + quant toolkit routes
 # ---------------------------------------------------------------------------
 
-@app.get("/manipulation")
-async def manipulation(
-    asset: str = "btc",
-    spoof: bool | None = Query(default=None, description="Force a spoof/clean scenario; omit for random."),
-    seed: int | None = None,
-):
-    """Spoofing radar for one order-book window.
-
-    Uses the deterministic simulated order-book feed (the seam where a live
-    exchange depth/trade stream would be plugged in) and returns the spoofing
-    probability, order-book features and SPOOF/SHEEP/WHALE sentiment triangle.
-    """
-    import random
-
-    feed = OrderBookFeed.for_asset(asset, seed=seed if seed is not None else random.randint(0, 10_000))
+def _single_scan(asset: str, spoof: bool | None, seed: int) -> dict:
+    """Run one order-book window and build the full radar response dict."""
+    feed = OrderBookFeed.for_asset(asset, seed=seed)
     is_spoof = feed.rng.random() < 0.4 if spoof is None else spoof
     side = "bid" if feed.rng.random() < 0.5 else "ask"
     snap, events = feed.sample(spoof=is_spoof, side=side)
@@ -225,6 +218,42 @@ async def manipulation(
             "ask_sizes": snap.ask_sizes.round(3).tolist(),
         },
     }
+
+
+@app.get("/manipulation")
+async def manipulation(
+    asset: str = "btc",
+    spoof: bool | None = Query(default=None, description="Force a spoof/clean scenario; omit for random."),
+    seed: int | None = None,
+    min_grade: str | None = Query(default=None, description="Only surface setups at this grade or better (e.g. A1)."),
+    max_scans: int = Query(default=100, ge=1, le=1000, description="How many windows to scan when filtering by grade."),
+):
+    """Spoofing radar for one order-book window.
+
+    Uses the deterministic simulated order-book feed (the seam where a live
+    exchange depth/trade stream would be plugged in). With ``min_grade`` it keeps
+    scanning fresh windows (up to ``max_scans``) and returns the first setup at
+    that grade or better — the "only show me A+/A1" filter — falling back to the
+    best it found with ``filtered.found = false``.
+    """
+    import random
+
+    base_seed = seed if seed is not None else random.randint(0, 1_000_000)
+    if min_grade is None:
+        return _single_scan(asset, spoof, base_seed)
+
+    want = grade_rank(min_grade)
+    best, best_rank = None, -99
+    for k in range(max_scans):
+        result = _single_scan(asset, spoof, base_seed + k)
+        rank = grade_rank(result["grade"])
+        if rank >= want:
+            result["filtered"] = {"min_grade": min_grade, "scans": k + 1, "found": True}
+            return result
+        if rank > best_rank:
+            best, best_rank = result, rank
+    best["filtered"] = {"min_grade": min_grade, "scans": max_scans, "found": False}
+    return best
 
 
 @app.get("/manipulation/scan")

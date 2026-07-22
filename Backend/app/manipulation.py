@@ -356,6 +356,11 @@ def grade_signal(
 _GRADE_RANK = {"A+": 6, "A1": 5, "A": 4, "B": 3, "C": 2, "D": 1, "F": 0, "NO-TRADE": -1}
 
 
+def grade_rank(grade: str) -> int:
+    """Numeric rank of a letter grade (higher is better); unknown -> -1."""
+    return _GRADE_RANK.get(grade, -1)
+
+
 def build_trade_plan(
     asset: str,
     mid: float,

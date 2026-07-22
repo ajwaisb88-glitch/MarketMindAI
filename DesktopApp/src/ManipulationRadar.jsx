@@ -118,13 +118,15 @@ export default function ManipulationRadar({ apiBase }) {
   const [error, setError] = useState(null);
 
   const [freq, setFreq] = useState(null);
+  const [minGrade, setMinGrade] = useState('');   // '' = show any setup
 
   const scan = useCallback(async () => {
     setLoading(true);
     setError(null);
     setFreq(null);
     try {
-      const res = await fetch(`${apiBase}/manipulation`);
+      const q = minGrade ? `?min_grade=${encodeURIComponent(minGrade)}` : '';
+      const res = await fetch(`${apiBase}/manipulation${q}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json();
       setData(d);
@@ -136,15 +138,26 @@ export default function ManipulationRadar({ apiBase }) {
     } finally {
       setLoading(false);
     }
-  }, [apiBase]);
+  }, [apiBase, minGrade]);
 
   return (
     <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div className="history-header" style={{ marginBottom: 0 }}>
         <h3>🛰 Manipulation Radar</h3>
-        <button className="btn-sm" disabled={loading} onClick={scan}>
-          {loading ? 'Scanning…' : 'Scan order book'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select value={minGrade} onChange={e => setMinGrade(e.target.value)}
+            title="Only surface setups at this grade or better"
+            style={{ fontSize: 12 }}>
+            <option value="">Any grade</option>
+            <option value="B">≥ B</option>
+            <option value="A">≥ A</option>
+            <option value="A1">A+ / A1 only</option>
+            <option value="A+">A+ only</option>
+          </select>
+          <button className="btn-sm" disabled={loading} onClick={scan}>
+            {loading ? 'Scanning…' : 'Scan order book'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="sub" style={{ color: 'var(--bear)' }}>⚠ {error}</div>}
@@ -155,6 +168,13 @@ export default function ManipulationRadar({ apiBase }) {
 
       {data && (
         <>
+          {data.filtered && (
+            <div className="sub" style={{ fontSize: 12, color: data.filtered.found ? 'var(--bull, #3fb950)' : 'var(--sub)' }}>
+              {data.filtered.found
+                ? `✓ Found a ≥${data.filtered.min_grade} setup in ${data.filtered.scans} scan${data.filtered.scans > 1 ? 's' : ''}`
+                : `No ≥${data.filtered.min_grade} setup in ${data.filtered.scans} scans — showing the best found (${data.grade})`}
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <GradeBadge grade={data.grade} score={data.score} />
             {data.grade !== 'NO-TRADE' && data.direction !== 'flat' && (

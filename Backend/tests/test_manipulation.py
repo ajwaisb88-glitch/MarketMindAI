@@ -153,6 +153,12 @@ def test_gold_profile_fix_gives_tradable_ceiling():
     assert m.grade_signal(100, "gold", -1)["grade"] in {"A+", "A1"}
 
 
+def test_grade_rank_ordering():
+    assert m.grade_rank("A+") > m.grade_rank("A1") > m.grade_rank("A") > m.grade_rank("B")
+    assert m.grade_rank("NO-TRADE") < m.grade_rank("F")
+    assert m.grade_rank("nonsense") == -1
+
+
 def test_trade_plan_levels_are_consistent():
     long = m.build_trade_plan("btc", 60000.0, "long", payoff=1.5)
     assert long["stop_loss"] < long["entry"] < long["take_profit"]

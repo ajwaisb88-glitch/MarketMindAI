@@ -183,6 +183,15 @@ grade bar or the base rate and precision climbs. Un-tradable assets (eurusd) fir
 zero graded-A signals. Endpoint:
 `GET /signals/frequency?asset=btc&scan_interval_sec=30&spoof_base_rate=0.05&min_grade=A`.
 
+### Grade filter & watchlist
+
+- `GET /manipulation?asset=btc&min_grade=A1` — the "only show me A+/A1" filter. It
+  keeps scanning fresh windows (up to `max_scans`) and returns the first setup at
+  that grade or better, with `filtered.found` telling you whether it succeeded.
+- The desktop app has an **all-coins watchlist** (`/manipulation/scan`) with grade
+  filter chips (All / ≥B / ≥A / A+·A1) and entry/SL/TP per asset, plus a grade
+  filter on the single-asset radar.
+
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`
 - Add authentication and API token handling
