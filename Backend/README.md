@@ -152,6 +152,37 @@ and the single `/manipulation` response carry `grade`, `score`, `conviction`,
 `tradability` and a `direction` (long/short). The desktop Manipulation Radar shows
 the grade as a coloured badge.
 
+### Trade plan (SL / TP / trailing TP)
+
+`build_trade_plan()` turns a graded signal into concrete levels. The stop sits one
+scalp-move from entry; the take-profit is `payoff` (default 1.5) times that
+distance; a trailing take-profit arms at +1R and then trails 0.5R behind the peak,
+so a runner keeps giving while a reversal still banks profit. Example (BTC short at
+$60,000, 0.30% scalp): `entry 60000 · SL 60180 (−0.30%) · TP 59730 (+0.45%) · RR
+1.5 · trailing arms at 59820`. Every actionable scan row and `/manipulation`
+response carry a `trade_plan`; the desktop radar renders entry/SL/TP boxes.
+
+### How many signals per day
+
+`estimate_signals_per_day()` projects daily signal counts, and is deliberately
+honest about the **base-rate effect**: at a realistic low spoof rate the raw fire
+count is dominated by benign look-alikes (legitimate repricing). It reports real
+signals vs false alarms with a precision figure. Example (BTC, scan every 30s, 5%
+of windows truly manipulated, grade ≥ A):
+
+| Metric | Value |
+|--------|-------|
+| windows scanned / day | 2,880 |
+| raw signals / day | ~316 |
+| **real** signals / day | ~144 |
+| false alarms / day | ~171 |
+| precision | ~0.46 |
+
+So the radar fires often, but under half are real at a 5% base rate — raise the
+grade bar or the base rate and precision climbs. Un-tradable assets (eurusd) fire
+zero graded-A signals. Endpoint:
+`GET /signals/frequency?asset=btc&scan_interval_sec=30&spoof_base_rate=0.05&min_grade=A`.
+
 Next steps:
 - Plug a live exchange feed into `OrderBookFeed`
 - Add authentication and API token handling

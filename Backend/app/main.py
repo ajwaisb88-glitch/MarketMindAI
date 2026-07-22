@@ -14,6 +14,8 @@ from app import scalping as scalping_mod
 from app.manipulation import (
     MARKET_PROFILES,
     OrderBookFeed,
+    build_trade_plan,
+    estimate_signals_per_day,
     grade_signal,
     scan_assets,
     spoofing_probability,
@@ -192,6 +194,11 @@ async def manipulation(
     snap, events = feed.sample(spoof=is_spoof, side=side)
     report = spoofing_probability(snap, events, funding_rate=feed.funding_rate())
     grade = grade_signal(report.probability, asset, report.predicted_move, report.funding_rate)
+    direction = "long" if report.predicted_move > 0 else "short" if report.predicted_move < 0 else "flat"
+    trade_plan = (
+        build_trade_plan(asset, snap.mid, direction)
+        if grade["grade"] != "NO-TRADE" and direction != "flat" else None
+    )
     return {
         "asset": asset.lower(),
         "scenario": "spoof" if is_spoof else "clean",
@@ -201,12 +208,13 @@ async def manipulation(
         "score": grade["score"],
         "conviction": grade["conviction"],
         "tradability": grade["tradability"],
+        "trade_plan": trade_plan,
         "probability": report.probability,
         "label": report.label,
         "posterior": round(report.posterior, 4),
         "pressure_side": report.pressure_side,
         "predicted_move": report.predicted_move,
-        "direction": "long" if report.predicted_move > 0 else "short" if report.predicted_move < 0 else "flat",
+        "direction": direction,
         "funding_rate": report.funding_rate,
         "features": report.features,
         "sentiment": report.sentiment,
@@ -228,6 +236,25 @@ async def manipulation_scan(seed: int = 0):
     direction and the sentiment triangle for that instrument.
     """
     return {"assets": sorted(MARKET_PROFILES.keys()), "scan": scan_assets(seed=seed)}
+
+
+@app.get("/signals/frequency")
+async def signals_frequency(
+    asset: str = "btc",
+    scan_interval_sec: float = Query(30.0, gt=0, description="How often the radar re-evaluates the book"),
+    spoof_base_rate: float = Query(0.05, ge=0.0, le=1.0, description="Fraction of windows that contain real manipulation"),
+    min_grade: str = Query("A", description="Minimum grade to count as a signal"),
+):
+    """Estimate how many gradeable signals a day the radar fires for an asset.
+
+    Reports the raw fire count and — honestly — splits it into real signals vs
+    false alarms with a precision figure, because at a realistic low base rate
+    the raw count is dominated by benign look-alikes (the base-rate effect).
+    """
+    return estimate_signals_per_day(
+        asset=asset, scan_interval_sec=scan_interval_sec,
+        spoof_base_rate=spoof_base_rate, min_grade=min_grade,
+    )
 
 
 @app.get("/quant/kelly")

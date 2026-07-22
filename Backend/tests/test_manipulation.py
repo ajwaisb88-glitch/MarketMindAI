@@ -1,6 +1,7 @@
 """Unit tests for the spoofing detection engine."""
 
 import numpy as np
+import pytest
 
 from app import manipulation as m
 
@@ -150,6 +151,42 @@ def test_tradability_caps_a_strong_signal():
 def test_gold_profile_fix_gives_tradable_ceiling():
     # After widening gold's default scalp, a strong gold signal is at least A1.
     assert m.grade_signal(100, "gold", -1)["grade"] in {"A+", "A1"}
+
+
+def test_trade_plan_levels_are_consistent():
+    long = m.build_trade_plan("btc", 60000.0, "long", payoff=1.5)
+    assert long["stop_loss"] < long["entry"] < long["take_profit"]
+    # reward:risk holds — TP distance is payoff x SL distance
+    up = long["take_profit"] - long["entry"]
+    dn = long["entry"] - long["stop_loss"]
+    assert up == pytest.approx(1.5 * dn, rel=1e-3)
+    assert long["trailing_tp"]["arms_at"] > long["entry"]
+
+    short = m.build_trade_plan("btc", 60000.0, "short", payoff=1.5)
+    assert short["stop_loss"] > short["entry"] > short["take_profit"]
+    assert short["trailing_tp"]["arms_at"] < short["entry"]
+
+
+def test_trade_plan_flat_has_no_levels():
+    assert m.build_trade_plan("btc", 100.0, "flat")["direction"] == "flat"
+
+
+def test_signals_per_day_splits_true_and_false():
+    e = m.estimate_signals_per_day("btc", scan_interval_sec=30, spoof_base_rate=0.05,
+                                   min_grade="A", n=4000, seed=1)
+    assert e["windows_per_day"] == 2880
+    # totals reconcile and precision is a valid fraction
+    assert e["signals_per_day"] == pytest.approx(
+        e["real_signals_per_day"] + e["false_alarms_per_day"], rel=1e-6)
+    assert 0.0 <= e["precision"] <= 1.0
+    # faster scanning yields more windows and at least as many signals
+    slow = m.estimate_signals_per_day("btc", scan_interval_sec=60, n=4000, seed=1)
+    assert slow["windows_per_day"] < e["windows_per_day"]
+
+
+def test_untradable_asset_fires_no_graded_signals():
+    e = m.estimate_signals_per_day("eurusd", min_grade="A", n=3000, seed=1)
+    assert e["signals_per_day"] == 0.0  # eurusd can't reach grade A
 
 
 def test_scan_includes_grade_and_sinks_no_trades():

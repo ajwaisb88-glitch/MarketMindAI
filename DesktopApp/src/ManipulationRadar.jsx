@@ -26,6 +26,40 @@ function GradeBadge({ grade, score }) {
   );
 }
 
+function TradePlan({ plan }) {
+  if (!plan) return null;
+  const isLong = plan.direction === 'long';
+  const dirColor = isLong ? '#3fb950' : '#f85149';
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontWeight: 700 }}>Trade plan</span>
+        <span style={{ color: dirColor, fontWeight: 700, fontSize: 13 }}>
+          {isLong ? '▲ LONG' : '▼ SHORT'} · {plan.implied_leverage}× · RR {plan.risk_reward}
+        </span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, textAlign: 'center' }}>
+        <LevelBox label="Entry" value={plan.entry} color="var(--text)" />
+        <LevelBox label="Stop loss" value={plan.stop_loss} color="#f85149" sub={`${plan.stop_pct}%`} />
+        <LevelBox label="Take profit" value={plan.take_profit} color="#3fb950" sub={`+${plan.take_profit_pct}%`} />
+      </div>
+      <div className="sub" style={{ fontSize: 12 }}>
+        ⤴ Trailing TP: arms at {plan.trailing_tp.arms_at} (+{plan.trailing_tp.arms_at_r}R), then trails {plan.trailing_tp.trail_distance_pct}% behind the peak
+      </div>
+    </div>
+  );
+}
+
+function LevelBox({ label, value, color, sub }) {
+  return (
+    <div style={{ background: '#0d1117', borderRadius: 6, padding: '8px 6px' }}>
+      <div className="sub" style={{ fontSize: 11 }}>{label}</div>
+      <div style={{ color, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      {sub && <div className="sub" style={{ fontSize: 11 }}>{sub}</div>}
+    </div>
+  );
+}
+
 function Gauge({ value, label }) {
   const pct = Math.max(0, Math.min(100, value ?? 0));
   const color = pct >= 70 ? '#f85149' : pct >= 40 ? '#e3b341' : '#3fb950';
@@ -83,13 +117,20 @@ export default function ManipulationRadar({ apiBase }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [freq, setFreq] = useState(null);
+
   const scan = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setFreq(null);
     try {
       const res = await fetch(`${apiBase}/manipulation`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
+      const d = await res.json();
+      setData(d);
+      // how often would a setup like this appear for that asset?
+      fetch(`${apiBase}/signals/frequency?asset=${d.asset}&min_grade=A`)
+        .then(r => r.ok ? r.json() : null).then(setFreq).catch(() => {});
     } catch (err) {
       setError(err.message);
     } finally {
@@ -131,6 +172,14 @@ export default function ManipulationRadar({ apiBase }) {
             <div style={{ display: 'flex', gap: 20, fontSize: 13 }}>
               <Row label="Conviction" value={`${data.conviction}/100`} />
               <Row label="Tradability" value={`${data.tradability}/100`} />
+            </div>
+          )}
+          {data.trade_plan && <TradePlan plan={data.trade_plan} />}
+          {freq && (
+            <div className="sub" style={{ fontSize: 12 }}>
+              📆 Est. for {freq.asset.toUpperCase()}: ~<b style={{ color: 'var(--text)' }}>{freq.real_signals_per_day}</b> real ≥A signals/day
+              {' '}(+{freq.false_alarms_per_day} false alarms · precision {Math.round(freq.precision * 100)}%),
+              {' '}scanning every {freq.scan_interval_sec}s at {Math.round(freq.spoof_base_rate * 100)}% base rate
             </div>
           )}
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>

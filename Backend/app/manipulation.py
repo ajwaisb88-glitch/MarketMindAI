@@ -353,6 +353,121 @@ def grade_signal(
     }
 
 
+_GRADE_RANK = {"A+": 6, "A1": 5, "A": 4, "B": 3, "C": 2, "D": 1, "F": 0, "NO-TRADE": -1}
+
+
+def build_trade_plan(
+    asset: str,
+    mid: float,
+    direction: str,
+    payoff: float = 1.5,
+    risk_per_trade: float = 0.05,
+    trail_activate_r: float = 1.0,
+    trail_distance_r: float = 0.5,
+) -> dict:
+    """Concrete entry / stop-loss / take-profit levels for a graded signal.
+
+    The stop sits one scalp-move from entry (``scalp_move_pct`` of price); the
+    fixed take-profit is ``payoff`` times that distance (the reward:risk ratio).
+    A trailing take-profit is also given: it arms once price is ``trail_activate_r``
+    R in profit and then trails ``trail_distance_r`` R behind the peak, so a runner
+    keeps giving while a reversal still locks in profit. ``direction`` is
+    "long" or "short"; leverage is implied by the scalp tightness.
+    """
+    move = market_profile(asset)["scalp_move_pct"] / 100.0
+    r = move * mid                       # 1R in price terms
+    lev = min(risk_per_trade / move, 50.0)
+    if direction == "long":
+        stop_loss = mid - r
+        take_profit = mid + payoff * r
+        trail_arm = mid + trail_activate_r * r
+        sl_pct, tp_pct = -move, payoff * move
+    elif direction == "short":
+        stop_loss = mid + r
+        take_profit = mid - payoff * r
+        trail_arm = mid - trail_activate_r * r
+        sl_pct, tp_pct = -move, payoff * move
+    else:
+        return {"direction": "flat", "note": "no directional signal — no trade plan"}
+
+    def _round(x: float) -> float:
+        # round to a sensible number of decimals for the asset's price scale
+        digits = 6 if mid < 10 else 4 if mid < 100 else 2
+        return round(float(x), digits)
+
+    return {
+        "direction": direction,
+        "entry": _round(mid),
+        "stop_loss": _round(stop_loss),
+        "take_profit": _round(take_profit),
+        "risk_reward": round(payoff, 2),
+        "stop_pct": round(sl_pct * 100, 3),
+        "take_profit_pct": round(tp_pct * 100, 3),
+        "implied_leverage": round(lev, 2),
+        "trailing_tp": {
+            "arms_at": _round(trail_arm),
+            "arms_at_r": trail_activate_r,
+            "trail_distance_pct": round(trail_distance_r * move * 100, 3),
+            "note": f"arm at +{trail_activate_r}R, then trail {trail_distance_r}R behind the peak",
+        },
+    }
+
+
+def estimate_signals_per_day(
+    asset: str = "btc",
+    scan_interval_sec: float = 30.0,
+    spoof_base_rate: float = 0.05,
+    min_grade: str = "B",
+    n: int = 8000,
+    seed: int = 0,
+) -> dict:
+    """Estimate how many gradeable signals a day the radar would fire.
+
+    Assumptions (all tunable — this is a projection, not live data):
+      * the radar evaluates a fresh order-book window every ``scan_interval_sec``;
+      * ``spoof_base_rate`` of windows contain genuine manipulation.
+    It runs the detector + grader over ``n`` simulated windows, counts how many
+    clear ``min_grade``, and scales by windows-per-day. Also breaks the count out
+    by grade tier so you can see how many A+/A1 setups vs marginal ones to expect.
+    """
+    feed = OrderBookFeed.for_asset(asset, seed=seed)
+    rng = np.random.default_rng(seed)
+    by_grade = {"A+": 0, "A1": 0, "A": 0, "B": 0, "C": 0, "D": 0, "F": 0, "NO-TRADE": 0}
+    fired = true_fire = false_fire = 0
+    threshold = _GRADE_RANK.get(min_grade, 3)
+    for _ in range(n):
+        is_spoof = rng.random() < spoof_base_rate
+        side: Side = "bid" if rng.random() < 0.5 else "ask"
+        strength = float(rng.uniform(0.2, 1.0)) if is_spoof else None
+        snap, events = feed.sample(spoof=is_spoof, side=side, strength=strength)
+        r = spoofing_probability(snap, events, funding_rate=feed.funding_rate())
+        g = grade_signal(r.probability, asset, r.predicted_move, r.funding_rate)
+        by_grade[g["grade"]] += 1
+        if _GRADE_RANK[g["grade"]] >= threshold:
+            fired += 1
+            if is_spoof:
+                true_fire += 1
+            else:
+                false_fire += 1
+    windows_per_day = 86400.0 / scan_interval_sec
+    scale = windows_per_day / n
+    per_day = {k: round(v * scale, 1) for k, v in by_grade.items()}
+    precision = (true_fire / fired) if fired else 0.0
+    return {
+        "asset": asset.lower(),
+        "scan_interval_sec": scan_interval_sec,
+        "windows_per_day": int(windows_per_day),
+        "spoof_base_rate": spoof_base_rate,
+        "min_grade": min_grade,
+        "fire_rate": round(fired / n, 4),
+        "signals_per_day": round(fired * scale, 1),           # every fire, incl. false alarms
+        "real_signals_per_day": round(true_fire * scale, 1),  # fires on genuine manipulation
+        "false_alarms_per_day": round(false_fire * scale, 1),
+        "precision": round(precision, 3),                     # share of fires that are real
+        "by_grade_per_day": per_day,
+    }
+
+
 class OrderBookFeed:
     """Deterministic synthetic order book + flow generator.
 
@@ -493,6 +608,11 @@ def scan_assets(
         snap, events = feed.sample(spoof=is_spoof, side=side)
         r = spoofing_probability(snap, events, funding_rate=feed.funding_rate())
         grade = grade_signal(r.probability, asset, r.predicted_move, r.funding_rate)
+        direction = "long" if r.predicted_move > 0 else "short" if r.predicted_move < 0 else "flat"
+        trade_plan = (
+            build_trade_plan(asset, snap.mid, direction)
+            if grade["grade"] != "NO-TRADE" and direction != "flat" else None
+        )
         reports.append({
             "asset": asset.lower(),
             "grade": grade["grade"],
@@ -503,7 +623,8 @@ def scan_assets(
             "label": r.label,
             "pressure_side": r.pressure_side,
             "predicted_move": r.predicted_move,
-            "direction": "long" if r.predicted_move > 0 else "short" if r.predicted_move < 0 else "flat",
+            "direction": direction,
+            "trade_plan": trade_plan,
             "funding_rate": r.funding_rate,
             "sentiment": r.sentiment,
             "mid": round(snap.mid, 6),
