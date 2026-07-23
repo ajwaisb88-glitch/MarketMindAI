@@ -70,6 +70,10 @@ def test_symbol_resolution(bc):
     assert bc.resolve("btc") == "BTCUSDT"
     assert bc.resolve("ETH-USD") == "ETHUSDT"
     assert bc.resolve("XRPUSDT") == "XRPUSDT"     # passthrough
+    # gold routes to PAX Gold (Binance has no XAUUSDT)
+    assert bc.resolve("gold") == "PAXGUSDT"
+    assert bc.resolve("xauusd") == "PAXGUSDT"
+    assert bc.resolve("xauusdt") == "PAXGUSDT"
 
 
 def test_feed_tick_and_snapshot():

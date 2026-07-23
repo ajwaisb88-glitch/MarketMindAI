@@ -39,8 +39,9 @@ ASSET_TICKERS: dict[str, str] = {
     "nasdaq": "^IXIC",
 }
 
-# Crypto assets route to Binance first (live, key-free) before yfinance/simulated.
-CRYPTO_ASSETS = {"btc", "eth", "doge", "shib", "pepe"}
+# Assets that route to Binance first (live, key-free) before yfinance/simulated.
+# Gold uses PAX Gold (PAXGUSDT) — a live gold order book without needing MT5.
+CRYPTO_ASSETS = {"btc", "eth", "doge", "shib", "pepe", "gold", "xauusd", "xauusdt", "paxg"}
 
 app = FastAPI(title="MarketMind AI Backend", version="0.2.0")
 

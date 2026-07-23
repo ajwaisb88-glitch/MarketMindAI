@@ -21,11 +21,15 @@ _HOSTS = ("https://api.binance.com", "https://api.binance.us")
 _TIMEOUT = 15
 
 # app symbol -> Binance symbol
+# Gold: Binance has no XAUUSDT, but PAXGUSDT (PAX Gold, a gold-backed token)
+# tracks spot gold with a real live order book — the tradeable gold proxy here.
 SYMBOL_MAP = {
     "BTC-USD": "BTCUSDT", "ETH-USD": "ETHUSDT",
     "DOGE-USD": "DOGEUSDT", "SHIB-USD": "SHIBUSDT", "PEPE-USD": "PEPEUSDT",
     "USDT-USD": "USDCUSDT", "USDC-USD": "USDCUSDT",
     "btc": "BTCUSDT", "eth": "ETHUSDT", "doge": "DOGEUSDT",
+    # gold via PAX Gold token
+    "gold": "PAXGUSDT", "xauusd": "PAXGUSDT", "xauusdt": "PAXGUSDT", "paxg": "PAXGUSDT",
 }
 
 
