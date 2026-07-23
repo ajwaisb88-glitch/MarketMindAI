@@ -116,45 +116,74 @@ REGISTRY: dict[str, SignalSource] = {s.key: s for s in (MarketMindSource(), Whal
 ALL_KEYS = list(REGISTRY.keys())
 
 
+MODES = ("off", "manual", "auto")   # off = ignore · manual = show only · auto = send to MT4/MT5
+
+
 class SignalSelector:
-    """Holds the user's chosen sources (persisted) and runs the feed for them."""
+    """Per-source mode (off / manual / auto), persisted. Simple: pick a source,
+    set it Manual (just show the signal) or Auto (route it to MT4/MT5)."""
 
     def __init__(self):
-        self.selected = self._load()
+        self.modes = self._load()
 
-    def _load(self) -> list[str]:
+    def _load(self) -> dict[str, str]:
+        modes = {k: "manual" for k in ALL_KEYS}   # safe default: show, don't auto-trade
         try:
             if os.path.exists(_SEL_FILE):
-                sel = json.load(open(_SEL_FILE))
-                return [k for k in sel if k in REGISTRY] or list(ALL_KEYS)
+                saved = json.load(open(_SEL_FILE))
+                for k, m in saved.items():
+                    if k in REGISTRY and m in MODES:
+                        modes[k] = m
         except Exception:
             pass
-        return list(ALL_KEYS)
+        return modes
 
-    def select(self, keys: list[str]) -> list[str]:
-        keys = [k for k in keys if k in REGISTRY]
-        if not keys:
-            raise ValueError(f"pick at least one of {ALL_KEYS}")
-        self.selected = keys
+    def _save(self):
         try:
-            json.dump(keys, open(_SEL_FILE, "w"))
+            json.dump(self.modes, open(_SEL_FILE, "w"))
         except Exception:
             pass
-        return keys
+
+    def set_mode(self, source: str, mode: str) -> dict[str, str]:
+        source, mode = source.lower(), mode.lower()
+        if source not in REGISTRY:
+            raise ValueError(f"unknown source '{source}' — pick from {ALL_KEYS}")
+        if mode not in MODES:
+            raise ValueError(f"mode must be one of {MODES}")
+        self.modes[source] = mode
+        self._save()
+        return self.modes
+
+    def set_modes(self, mapping: dict[str, str]) -> dict[str, str]:
+        for k, m in mapping.items():
+            self.set_mode(k, m)
+        return self.modes
+
+    def active(self) -> list[str]:
+        return [k for k, m in self.modes.items() if m != "off"]
 
     def sources_info(self) -> list[dict]:
         return [{"key": s.key, "name": s.name, "description": s.description,
-                 "engine": s.engine, "selected": s.key in self.selected} for s in REGISTRY.values()]
+                 "engine": s.engine, "mode": self.modes.get(s.key, "off")} for s in REGISTRY.values()]
 
-    def feed(self, asset: str) -> dict:
-        """Signals for one asset from every selected source."""
+    def feed(self, asset: str, lots: float = 0.01) -> dict:
+        """Signals for one asset from every active source. Auto-mode directional
+        signals are routed to MT4/MT5 (executor); manual-mode are shown only."""
+        from . import executor
         out = {}
-        for key in self.selected:
+        for key in self.active():
+            mode = self.modes[key]
             try:
-                out[key] = REGISTRY[key].get(asset)
+                sig = REGISTRY[key].get(asset)
             except Exception as exc:  # noqa: BLE001
-                out[key] = {"source": key, "error": str(exc)}
-        return {"asset": asset, "selected": self.selected, "signals": out}
+                out[key] = {"source": key, "mode": mode, "error": str(exc)}
+                continue
+            if sig:
+                sig["mode"] = mode
+                if mode == "auto":
+                    sig["execution"] = executor.route(sig, lots=lots)
+            out[key] = sig
+        return {"asset": asset, "modes": self.modes, "signals": out}
 
 
 _selector: Optional[SignalSelector] = None

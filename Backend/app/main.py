@@ -532,28 +532,32 @@ async def strategy_backtest_csv(
 
 @app.get("/signals/sources")
 async def signal_sources_list():
-    """The 3 selectable signal systems and which are active."""
+    """The 3 signal systems and each one's mode (off / manual / auto)."""
     from app.signal_sources import get_selector
     return {"sources": get_selector().sources_info()}
 
 
-@app.post("/signals/sources/select")
-async def signal_sources_select(sources: str = Query(..., description="comma list: monster,whale,marketmind")):
-    """Choose which systems' signals to run. The feed then serves only these."""
+@app.post("/signals/sources/mode")
+async def signal_sources_mode(
+    source: str = Query(..., description="monster | whale | marketmind"),
+    mode: str = Query(..., pattern="^(off|manual|auto)$",
+                      description="off = ignore · manual = show only · auto = send to MT4/MT5"),
+):
+    """Set a source's mode. Auto routes its signals to MT4/MT5; manual just shows them."""
     from app.signal_sources import get_selector
-    keys = [s.strip().lower() for s in sources.split(",") if s.strip()]
     try:
-        chosen = get_selector().select(keys)
+        modes = get_selector().set_mode(source, mode)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    return {"selected": chosen}
+    return {"modes": modes}
 
 
 @app.get("/signals/feed")
-async def signals_feed(asset: str = "gold"):
-    """Live signals for an asset from every SELECTED source (monster/whale/marketmind)."""
+async def signals_feed(asset: str = "gold", lots: float = 0.01):
+    """Live signals for an asset from every active source. Auto-mode signals are
+    routed to MT4/MT5 (queued until the terminal is connected); manual are shown."""
     from app.signal_sources import get_selector
-    return get_selector().feed(asset)
+    return get_selector().feed(asset, lots=lots)
 
 
 @app.get("/crypto/signals")

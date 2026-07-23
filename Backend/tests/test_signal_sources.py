@@ -9,23 +9,43 @@ def test_three_sources_registered():
     assert set(ss.REGISTRY) == {"marketmind", "whale", "monster"}
 
 
-def test_selector_defaults_to_all_and_can_narrow(tmp_path, monkeypatch):
+def test_modes_default_manual_and_persist(tmp_path, monkeypatch):
     monkeypatch.setattr(ss, "_SEL_FILE", str(tmp_path / "sel.json"))
     sel = ss.SignalSelector()
-    assert set(sel.selected) == {"marketmind", "whale", "monster"}
-    sel.select(["monster", "whale"])
-    assert set(sel.selected) == {"monster", "whale"}
+    assert sel.modes == {"marketmind": "manual", "whale": "manual", "monster": "manual"}
+    # choose just monster on auto, the rest off
+    sel.set_modes({"monster": "auto", "whale": "off", "marketmind": "off"})
+    assert sel.active() == ["monster"]
     # persists + reloads
-    assert set(ss.SignalSelector().selected) == {"monster", "whale"}
+    assert ss.SignalSelector().modes["monster"] == "auto"
 
 
-def test_selector_rejects_empty():
+def test_mode_validation():
     sel = ss.SignalSelector()
-    try:
-        sel.select(["nonsense"])
-        assert False, "should reject unknown-only selection"
-    except ValueError:
-        pass
+    for bad in [("monster", "sideways"), ("nope", "auto")]:
+        try:
+            sel.set_mode(*bad)
+            assert False, "should reject invalid mode/source"
+        except ValueError:
+            pass
+
+
+def test_auto_signal_is_routed_to_terminal(tmp_path, monkeypatch):
+    monkeypatch.setattr(ss, "_SEL_FILE", str(tmp_path / "sel.json"))
+    # a fake source that always returns a BUY so we can assert routing
+    class _Fake(ss.SignalSource):
+        key = "monster"
+        def get(self, asset):
+            return {"source": "monster", "asset": asset, "direction": "BUY",
+                    "entry": 100.0, "stop_loss": 98.0, "take_profit": 104.0}
+    monkeypatch.setitem(ss.REGISTRY, "monster", _Fake())
+    sel = ss.SignalSelector()
+    sel.set_modes({"monster": "auto", "whale": "off", "marketmind": "off"})
+    feed = sel.feed("gold")
+    sig = feed["signals"]["monster"]
+    assert sig["mode"] == "auto"
+    assert sig["execution"]["order"]["side"] == "BUY"          # routed to the terminal
+    assert "queued" in sig["execution"]["status"]              # MT not connected yet
 
 
 def test_better_volume_flags_green_churn_buy():
