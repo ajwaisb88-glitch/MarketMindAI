@@ -46,13 +46,27 @@ class CryptoSignalService:
         return longterm_signal(c, h, l).as_dict()
 
     def scalp(self, symbol: str, window_sec: float = 1.0) -> dict:
+        from app.manipulation import build_trade_plan
+
         r = self.feed.report(symbol, window_sec)
-        return {
+        direction = "BUY" if r.predicted_move > 0 else "SELL" if r.predicted_move < 0 else "NONE"
+        out = {
             "type": "scalp", "symbol": symbol,
             "spoof_probability": r.probability, "pressure_side": r.pressure_side,
-            "direction": ("BUY" if r.predicted_move > 0 else "SELL" if r.predicted_move < 0 else "NONE"),
-            "label": r.label,
+            "direction": direction, "label": r.label,
+            "entry": None, "stop_loss": None, "take_profit": None, "risk_reward": None,
         }
+        if direction != "NONE":
+            ob = self.bc.order_book(symbol)
+            mid = (ob.best_bid + ob.best_ask) / 2.0 if ob else None
+            if mid:
+                plan = build_trade_plan(symbol, mid, "long" if direction == "BUY" else "short")
+                out.update({
+                    "entry": plan["entry"], "stop_loss": plan["stop_loss"],
+                    "take_profit": plan["take_profit"], "risk_reward": plan["risk_reward"],
+                    "trailing_tp": plan.get("trailing_tp"),
+                })
+        return out
 
     def all_signals(self, symbol: str) -> dict:
         return {
