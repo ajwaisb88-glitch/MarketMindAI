@@ -511,3 +511,24 @@ async def strategy_backtest_csv(
         "current_signal": signal,
         "backtest": result,
     }
+
+
+@app.get("/crypto/signals")
+async def crypto_signals(asset: str = "btc", scalp: bool = True):
+    """Live crypto signals from Binance (key-free): the three SEPARATE types —
+    scalp (spoofing radar on the live order book), intraday (EMA/RSI) and
+    longterm (SMA/momentum). Crypto only; gold uses a different engine + MT5.
+    Signals are kept independent, never blended into one score.
+    """
+    from app.crypto_signals import CryptoSignalService
+
+    svc = CryptoSignalService()
+    out: dict = {
+        "asset": asset.lower(),
+        "data_source": "binance",
+        "intraday": svc.intraday(asset),
+        "longterm": svc.longterm(asset),
+    }
+    if scalp:
+        out["scalp"] = svc.scalp(asset)
+    return out
