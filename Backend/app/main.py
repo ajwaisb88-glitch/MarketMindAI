@@ -39,6 +39,9 @@ ASSET_TICKERS: dict[str, str] = {
     "nasdaq": "^IXIC",
 }
 
+# Crypto assets route to Binance first (live, key-free) before yfinance/simulated.
+CRYPTO_ASSETS = {"btc", "eth", "doge", "shib", "pepe"}
+
 app = FastAPI(title="MarketMind AI Backend", version="0.2.0")
 
 origins = [
@@ -157,7 +160,20 @@ def _fetch_ohlc(asset: str, intraday: bool) -> tuple:
         except Exception as exc:  # noqa: BLE001
             logger.warning("FMP OHLC failed for %s: %s", asset, exc)
 
-    # 2) yfinance
+    # 2) Binance — live crypto data, key-free (crypto assets only)
+    if asset.lower() in CRYPTO_ASSETS:
+        try:
+            from app.connectors.binance import BinanceConnector
+            k = BinanceConnector().klines(asset, "15m" if intraday else "1d", 500)
+            if k and len(k) > 60:
+                highs = np.array([b["high"] for b in k], dtype=float)
+                lows = np.array([b["low"] for b in k], dtype=float)
+                closes = np.array([b["close"] for b in k], dtype=float)
+                return highs, lows, closes, "binance"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Binance OHLC failed for %s: %s", asset, exc)
+
+    # 3) yfinance
     ticker = ASSET_TICKERS.get(asset.lower())
     if ticker is not None:
         try:
