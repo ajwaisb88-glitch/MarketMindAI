@@ -530,6 +530,32 @@ async def strategy_backtest_csv(
     }
 
 
+@app.get("/signals/sources")
+async def signal_sources_list():
+    """The 3 selectable signal systems and which are active."""
+    from app.signal_sources import get_selector
+    return {"sources": get_selector().sources_info()}
+
+
+@app.post("/signals/sources/select")
+async def signal_sources_select(sources: str = Query(..., description="comma list: monster,whale,marketmind")):
+    """Choose which systems' signals to run. The feed then serves only these."""
+    from app.signal_sources import get_selector
+    keys = [s.strip().lower() for s in sources.split(",") if s.strip()]
+    try:
+        chosen = get_selector().select(keys)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"selected": chosen}
+
+
+@app.get("/signals/feed")
+async def signals_feed(asset: str = "gold"):
+    """Live signals for an asset from every SELECTED source (monster/whale/marketmind)."""
+    from app.signal_sources import get_selector
+    return get_selector().feed(asset)
+
+
 @app.get("/crypto/signals")
 async def crypto_signals(asset: str = "btc", scalp: bool = True):
     """Live crypto signals from Binance (key-free): the three SEPARATE types —
