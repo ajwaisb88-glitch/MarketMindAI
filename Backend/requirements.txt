@@ -8,3 +8,4 @@ scikit-learn
 pytest
 pyinstaller
 fredapi
+polars>=1.0

@@ -92,24 +92,73 @@ class WhaleSource(SignalSource):
         return out
 
 
+# Monster's timeframes -> Binance intervals (Binance serves all of them natively)
+_TF_TO_BINANCE = {"M5": "5m", "M15": "15m", "M30": "30m", "H1": "1h",
+                  "H4": "4h", "D1": "1d", "W1": "1w"}
+
+
+def _monster_bars(tf: str, symbol: str) -> list[dict]:
+    """Bar provider for the vendored confluence engine (Binance today, MT5 next)."""
+    interval = _TF_TO_BINANCE.get(str(tf).upper())
+    if not interval:
+        return []
+    k = _bc.klines(symbol, interval, 500)
+    return [{"t": b["t"], "o": b["open"], "h": b["high"],
+             "l": b["low"], "c": b["close"], "v": b["volume"]} for b in k]
+
+
+def _grade_from_score(score: float) -> str:
+    """Confluence score -> A-tier ladder. Actionable starts at 68."""
+    if score >= 85:
+        return "A+"
+    if score >= 76:
+        return "A1"
+    if score >= 68:
+        return "A"
+    if score >= 55:
+        return "B"
+    return "C"
+
+
 class MonsterSource(SignalSource):
     key, name = "monster", "Monster"
-    description = "Confluence swing — structure + momentum, trailing TP (D1/H1)"
-    engine = "confluence-swing"
+    description = "Full confluence score — HTF · Better Volume retest · Session · 60-Agents · Quick"
+    engine = "confluence-100pt"
 
-    def get(self, asset: str) -> Optional[dict]:
-        b = _bars(asset, "1d", 300)
-        if b is None:
-            return None
-        highs, lows, closes, vols, opens = b
-        sig = strat.longterm_signal(closes, highs, lows).as_dict()
-        d = "SELL" if sig["direction"] == "short" else "BUY" if sig["direction"] == "long" else "NONE"
-        return {"source": self.key, "engine": self.engine, "asset": asset,
-                "direction": d, "grade": sig.get("grade", "-"),
-                "entry": sig.get("entry"), "stop_loss": sig.get("stop_loss"),
-                "take_profit": sig.get("take_profit"), "risk_reward": sig.get("risk_reward"),
-                "trailing_tp": "arm +1R, trail 2xATR (no cap)",
-                "story": "Monster confluence swing — trade with the higher-timeframe structure."}
+    def get(self, asset: str, mode: str = "SWING") -> Optional[dict]:
+        from .monster.confluence import ConfluenceEngine, set_bars_provider
+
+        set_bars_provider(_monster_bars)
+        r = ConfluenceEngine().analyze(mode=mode, symbol=asset)
+        if r.get("status") != "ok":
+            return {"source": self.key, "engine": self.engine, "asset": asset,
+                    "direction": "NONE", "grade": "-", "story": r.get("message", "no data")}
+
+        side = r.get("side", "WAIT")
+        sc = r.get("score", {})
+        best = max(sc.get("buy", 0), sc.get("sell", 0))
+        direction = "BUY" if "CONFLUENCE BUY" in side else "SELL" if "CONFLUENCE SELL" in side else "NONE"
+        grade = _grade_from_score(best)
+
+        out = {
+            "source": self.key, "engine": self.engine, "asset": asset,
+            "direction": direction, "grade": grade,
+            "confluence_score": best, "margin": sc.get("margin"),
+            "tier": r.get("tier"), "story": r.get("reason"),
+            "factors": r.get("factors", {}).get(sc.get("winner", "BUY").lower() if False else "buy"),
+            "htf": r.get("htf"), "session": (r.get("session") or {}).get("state"),
+            "bv_trigger": (r.get("bv_trigger") or {}).get("text"),
+            "agent_pressure": (r.get("agent_pressure") or {}).get("pressure"),
+            "mode": mode,
+            "entry": None, "stop_loss": None, "take_profit": None, "risk_reward": None,
+        }
+        # levels from ATR on the entry timeframe
+        if direction != "NONE":
+            b = _bars(asset, "1h", 200)
+            if b is not None:
+                highs, lows, closes, _v, _o = b
+                out.update(_atr_plan(direction, float(closes[-1]), strat.atr(highs, lows, closes)))
+        return out
 
 
 REGISTRY: dict[str, SignalSource] = {s.key: s for s in (MarketMindSource(), WhaleSource(), MonsterSource())}
