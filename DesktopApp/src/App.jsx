@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import './App.css';
 import ManipulationRadar from './ManipulationRadar';
 import Watchlist from './Watchlist';
+import MoneyFlow from './MoneyFlow';
 
 const LOCAL_API = 'http://127.0.0.1:8000';
 const API_SETTINGS_KEY = 'mm_api_settings_v1';
@@ -196,6 +197,8 @@ export default function App() {
         <Watchlist apiBase={apiBase} />
 
         {/* ── Manipulation radar ── */}
+        <MoneyFlow apiBase={apiBase} />
+
         <ManipulationRadar apiBase={apiBase} />
 
         {/* ── Result ── */}
