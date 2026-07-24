@@ -11,10 +11,16 @@ for placing orders (not done here — this is data only).
 """
 from __future__ import annotations
 
+import os
+import time
 from dataclasses import dataclass
 from typing import Optional
 
 import requests
+
+# klines are shared by several engines in one pass — cache briefly
+_KLINE_TTL = float(os.getenv("MARKETMIND_KLINE_TTL_SEC", "10"))
+_KLINE_CACHE: dict[tuple, tuple[float, list]] = {}
 
 # Primary host; binance.us is the fallback for US-restricted regions.
 _HOSTS = ("https://api.binance.com", "https://api.binance.us")
@@ -84,14 +90,25 @@ class BinanceConnector:
         return SYMBOL_MAP.get(symbol, symbol.replace("-", "").upper())
 
     def klines(self, symbol: str, interval: str = "1h", limit: int = 500) -> list[dict]:
-        """OHLCV bars. interval: 1m,5m,15m,30m,1h,4h,1d,1w …"""
-        data = self._get("/api/v3/klines", {"symbol": self.resolve(symbol), "interval": interval, "limit": limit})
+        """OHLCV bars. interval: 1m,5m,15m,30m,1h,4h,1d,1w …
+
+        Cached for _KLINE_TTL seconds — several engines request the same series
+        in one pass, and a bar hasn't changed within that window anyway.
+        """
+        key = (self.resolve(symbol), interval, limit)
+        now = time.time()
+        hit = _KLINE_CACHE.get(key)
+        if hit and (now - hit[0]) < _KLINE_TTL:
+            return hit[1]
+        data = self._get("/api/v3/klines", {"symbol": key[0], "interval": interval, "limit": limit})
         if not isinstance(data, list):
             return []
-        return [{
+        out = [{
             "t": int(k[0]), "open": float(k[1]), "high": float(k[2]),
             "low": float(k[3]), "close": float(k[4]), "volume": float(k[5]),
         } for k in data]
+        _KLINE_CACHE[key] = (now, out)
+        return out
 
     def order_book(self, symbol: str, limit: int = 100) -> Optional[BookImbalance]:
         """Live DOM. Aggregated bid/ask volume = pending-order pressure."""

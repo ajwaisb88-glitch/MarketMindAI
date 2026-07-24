@@ -14,9 +14,15 @@ WebSocket depth-diff stream is the precise upgrade, same objects out.
 """
 from __future__ import annotations
 
+import os
 import time
 
 import numpy as np
+
+# The order-book observation costs a real time window plus round-trips, and the
+# UI polls. Short cache keeps the feed responsive; pass max_age=0 for a fresh read.
+_REPORT_TTL = float(os.getenv("MARKETMIND_SPOOF_TTL_SEC", "5"))
+_REPORT_CACHE: dict[str, tuple] = {}
 
 from ..manipulation import FlowEvent, OrderBookSnapshot, spoofing_probability
 from .binance import BinanceConnector
@@ -47,7 +53,6 @@ class BinanceOrderBookFeed:
     def observe(self, symbol: str, window_sec: float = 1.0) -> tuple[OrderBookSnapshot, list[FlowEvent]]:
         """One (snapshot, flow-window) pair from live Binance data."""
         d0 = self.bc.raw_depth(symbol, 100)
-        t0 = self.bc.raw_agg_trades(symbol, 500)
         time.sleep(window_sec)
         d1 = self.bc.raw_depth(symbol, 100)
         snap = self._snapshot(d1)
@@ -55,8 +60,8 @@ class BinanceOrderBookFeed:
         tick = self._tick(d1["bid_prices"] + d1["ask_prices"])
         events: list[FlowEvent] = []
 
-        # Trades in the window (aggressor side + distance from mid)
-        cutoff = (t0[0]["t"] if t0 else 0)
+        # Trades in the window (aggressor side + distance from mid). One fetch is
+        # enough — aggTrades returns the most recent window, which is what we want.
         for tr in self.bc.raw_agg_trades(symbol, 500):
             side = "ask" if not tr["m"] else "bid"   # m=False → aggressor bought (hit ask)
             dist = abs(tr["price"] - mid) / tick if tick else 0.0
@@ -124,7 +129,19 @@ class BinanceOrderBookFeed:
         sizes = sizes[sizes > 0]
         return float(np.percentile(sizes, 40)) if len(sizes) else 0.0
 
-    def report(self, symbol: str, window_sec: float = 1.0):
-        """Live spoofing report for a symbol."""
+    def report(self, symbol: str, window_sec: float = 1.0, max_age: float = _REPORT_TTL):
+        """Live spoofing report for a symbol.
+
+        Cached for `max_age` seconds: observing the book costs a real wall-clock
+        window plus several round-trips, and the UI polls this. Pass max_age=0 to
+        force a fresh read (do that before acting on a signal, not for display).
+        """
+        now = time.time()
+        key = symbol.lower()
+        hit = _REPORT_CACHE.get(key)
+        if max_age > 0 and hit and (now - hit[0]) < max_age:
+            return hit[1]
         snap, events = self.observe(symbol, window_sec)
-        return spoofing_probability(snap, events)
+        rep = spoofing_probability(snap, events)
+        _REPORT_CACHE[key] = (now, rep)
+        return rep

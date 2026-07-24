@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Optional
 
 import numpy as np
@@ -26,14 +27,38 @@ _SEL_FILE = os.getenv("MARKETMIND_SOURCES_FILE", "selected_sources.json")
 _bc = BinanceConnector()
 
 
+# ── shared bar cache ───────────────────────────────
+# Every source pulls bars, and the confluence engine pulls 5-6 timeframes. Without
+# this, one feed call refetches the same series many times over. Short TTL keeps
+# signals live while collapsing the duplicate network/terminal round-trips.
+_BAR_TTL = float(os.getenv("MARKETMIND_BAR_TTL_SEC", "10"))
+_bar_cache: dict[tuple, tuple[float, object]] = {}
+
+
+def _cached(key: tuple, fetch):
+    now = time.time()
+    hit = _bar_cache.get(key)
+    if hit and (now - hit[0]) < _BAR_TTL:
+        return hit[1]
+    val = fetch()
+    _bar_cache[key] = (now, val)
+    return val
+
+
+def clear_bar_cache() -> None:
+    _bar_cache.clear()
+
+
 def _bars(asset: str, interval: str, limit: int = 300):
-    """OHLCV arrays for an asset via Binance (crypto + PAXG gold)."""
-    k = _bc.klines(asset, interval, limit)
-    if not k or len(k) < 60:
-        return None
-    return (np.array([b["high"] for b in k], float), np.array([b["low"] for b in k], float),
-            np.array([b["close"] for b in k], float), np.array([b["volume"] for b in k], float),
-            np.array([b["open"] for b in k], float))
+    """OHLCV arrays for an asset via Binance (crypto + PAXG gold). Cached."""
+    def _fetch():
+        k = _bc.klines(asset, interval, limit)
+        if not k or len(k) < 60:
+            return None
+        return (np.array([b["high"] for b in k], float), np.array([b["low"] for b in k], float),
+                np.array([b["close"] for b in k], float), np.array([b["volume"] for b in k], float),
+                np.array([b["open"] for b in k], float))
+    return _cached(("arr", asset.lower(), interval, limit), _fetch)
 
 
 def _atr_plan(direction: str, close: float, atr: float, rr: float = 2.0, k_stop: float = 1.5) -> dict:
@@ -59,6 +84,10 @@ class MarketMindSource(SignalSource):
     description = "Crypto — spoof scalp + intraday + longterm (Binance order flow)"
     engine = "spoof-radar / EMA-RSI / momentum"
 
+    # order-book observation window; the feed uses a short one so the endpoint
+    # stays responsive (it is pure wall-clock sleep between depth snapshots).
+    scalp_window_sec = float(os.getenv("MARKETMIND_SCALP_WINDOW_SEC", "0.35"))
+
     def get(self, asset: str) -> Optional[dict]:
         from .crypto_signals import CryptoSignalService
         svc = CryptoSignalService()
@@ -67,7 +96,8 @@ class MarketMindSource(SignalSource):
                 "direction": ("SELL" if intr.get("direction") == "short" else "BUY" if intr.get("direction") == "long" else "NONE"),
                 "grade": intr.get("grade", "-"), "entry": intr.get("entry"),
                 "stop_loss": intr.get("stop_loss"), "take_profit": intr.get("take_profit"),
-                "risk_reward": intr.get("risk_reward"), "scalp": svc.scalp(asset),
+                "risk_reward": intr.get("risk_reward"),
+                "scalp": svc.scalp(asset, window_sec=self.scalp_window_sec),
                 "story": "MarketMind intraday + live scalp from the order book."}
 
 
@@ -109,21 +139,25 @@ def _monster_bars(tf: str, symbol: str) -> list[dict]:
     terminal isn't running, so the engine never goes dark.
     """
     tf_u = str(tf).upper()
-    if symbol.lower() in _MT5_ASSETS:
-        try:
-            from .connectors import mt5 as mt5c
-            if mt5c.is_available():
-                b = mt5c.bars(symbol, tf_u, 500)
-                if b:
-                    return b
-        except Exception:
-            pass
-    interval = _TF_TO_BINANCE.get(tf_u)
-    if not interval:
-        return []
-    k = _bc.klines(symbol, interval, 500)
-    return [{"t": b["t"], "o": b["open"], "h": b["high"],
-             "l": b["low"], "c": b["close"], "v": b["volume"]} for b in k]
+
+    def _fetch():
+        if symbol.lower() in _MT5_ASSETS:
+            try:
+                from .connectors import mt5 as mt5c
+                if mt5c.is_available():
+                    b = mt5c.bars(symbol, tf_u, 500)
+                    if b:
+                        return b
+            except Exception:
+                pass
+        interval = _TF_TO_BINANCE.get(tf_u)
+        if not interval:
+            return []
+        k = _bc.klines(symbol, interval, 500)
+        return [{"t": b["t"], "o": b["open"], "h": b["high"],
+                 "l": b["low"], "c": b["close"], "v": b["volume"]} for b in k]
+
+    return _cached(("mon", symbol.lower(), tf_u), _fetch)
 
 
 def _grade_from_score(score: float) -> str:

@@ -31,21 +31,66 @@ def test_mode_validation():
 
 
 def test_auto_signal_is_routed_to_terminal(tmp_path, monkeypatch):
+    """AUTO signals must reach the router — with the router itself stubbed.
+
+    SAFETY: never let a test call the real executor. A live MT5 terminal with
+    AutoTrading enabled would place an actual order from the test suite.
+    """
     monkeypatch.setattr(ss, "_SEL_FILE", str(tmp_path / "sel.json"))
-    # a fake source that always returns a BUY so we can assert routing
+
+    sent = {}
+
+    def _fake_route(signal, lots=0.01, terminal="MT5"):
+        sent["signal"] = signal
+        return {"routed": False, "status": "stubbed in tests",
+                "order": {"side": signal["direction"], "lots": lots}}
+
+    import app.executor as ex
+    monkeypatch.setattr(ex, "route", _fake_route)
+
     class _Fake(ss.SignalSource):
         key = "monster"
         def get(self, asset):
             return {"source": "monster", "asset": asset, "direction": "BUY",
                     "entry": 100.0, "stop_loss": 98.0, "take_profit": 104.0}
     monkeypatch.setitem(ss.REGISTRY, "monster", _Fake())
+
     sel = ss.SignalSelector()
     sel.set_modes({"monster": "auto", "whale": "off", "marketmind": "off"})
-    feed = sel.feed("gold")
-    sig = feed["signals"]["monster"]
+    sig = sel.feed("gold")["signals"]["monster"]
+
     assert sig["mode"] == "auto"
-    assert sig["execution"]["order"]["side"] == "BUY"          # routed to the terminal
-    assert "queued" in sig["execution"]["status"]              # MT not connected yet
+    assert sent["signal"]["direction"] == "BUY"                # reached the router
+    assert sig["execution"]["order"]["side"] == "BUY"
+    assert sig["execution"]["status"] == "stubbed in tests"    # never hit MT5
+
+
+def test_manual_signals_never_reach_the_router(tmp_path, monkeypatch):
+    """The other half of the safety contract: manual mode must not route."""
+    monkeypatch.setattr(ss, "_SEL_FILE", str(tmp_path / "sel.json"))
+    called = {"n": 0}
+
+    def _boom(*a, **k):
+        called["n"] += 1
+        return {"routed": False, "status": "should not be called", "order": None}
+
+    import app.executor as ex
+    monkeypatch.setattr(ex, "route", _boom)
+
+    class _Fake(ss.SignalSource):
+        key = "monster"
+        def get(self, asset):
+            return {"source": "monster", "asset": asset, "direction": "BUY",
+                    "entry": 100.0, "stop_loss": 98.0, "take_profit": 104.0}
+    monkeypatch.setitem(ss.REGISTRY, "monster", _Fake())
+
+    sel = ss.SignalSelector()
+    sel.set_modes({"monster": "manual", "whale": "off", "marketmind": "off"})
+    sig = sel.feed("gold")["signals"]["monster"]
+
+    assert sig["mode"] == "manual"
+    assert "execution" not in sig
+    assert called["n"] == 0                                    # router never touched
 
 
 def test_better_volume_flags_green_churn_buy():
