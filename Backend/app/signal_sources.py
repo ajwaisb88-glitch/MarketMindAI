@@ -97,9 +97,28 @@ _TF_TO_BINANCE = {"M5": "5m", "M15": "15m", "M30": "30m", "H1": "1h",
                   "H4": "4h", "D1": "1d", "W1": "1w"}
 
 
+# assets that should come from the broker terminal rather than Binance
+_MT5_ASSETS = {"gold", "xauusd", "silver", "eurusd", "gbpusd", "usdjpy"}
+
+
 def _monster_bars(tf: str, symbol: str) -> list[dict]:
-    """Bar provider for the vendored confluence engine (Binance today, MT5 next)."""
-    interval = _TF_TO_BINANCE.get(str(tf).upper())
+    """Bar provider for the vendored confluence engine.
+
+    Broker (MT5) for gold/FX/metals — real bars and tick volume, which is what
+    Better Volume expects. Binance for crypto. Falls back to Binance if the
+    terminal isn't running, so the engine never goes dark.
+    """
+    tf_u = str(tf).upper()
+    if symbol.lower() in _MT5_ASSETS:
+        try:
+            from .connectors import mt5 as mt5c
+            if mt5c.is_available():
+                b = mt5c.bars(symbol, tf_u, 500)
+                if b:
+                    return b
+        except Exception:
+            pass
+    interval = _TF_TO_BINANCE.get(tf_u)
     if not interval:
         return []
     k = _bc.klines(symbol, interval, 500)

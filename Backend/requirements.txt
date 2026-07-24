@@ -9,3 +9,4 @@ pytest
 pyinstaller
 fredapi
 polars>=1.0
+MetaTrader5; sys_platform == 'win32'
