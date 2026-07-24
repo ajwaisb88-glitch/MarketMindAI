@@ -530,6 +530,15 @@ async def strategy_backtest_csv(
     }
 
 
+@app.get("/moneyflow")
+async def moneyflow():
+    """Global money flow tree: liquidity → currencies → asset classes → instruments,
+    with regime, rotation and the proven risk_off_vix signal. Separate engine —
+    it never feeds the confluence/trade score."""
+    from app.money_flow import build_flow
+    return build_flow()
+
+
 @app.get("/signals/sources")
 async def signal_sources_list():
     """The 3 signal systems and each one's mode (off / manual / auto)."""

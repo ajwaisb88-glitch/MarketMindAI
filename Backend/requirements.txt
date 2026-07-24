@@ -7,3 +7,4 @@ yfinance
 scikit-learn
 pytest
 pyinstaller
+fredapi
