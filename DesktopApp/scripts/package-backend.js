@@ -28,6 +28,16 @@ execFileSync(
     '--collect-all', 'yfinance',
     '--collect-all', 'uvicorn',
     '--collect-all', 'fastapi',
+    // engines + connectors added for the all-in-one build
+    '--collect-all', 'polars',        // Monster confluence (Rust extension)
+    '--collect-all', 'MetaTrader5',   // broker connector (compiled extension)
+    '--collect-all', 'fredapi',       // Fed net liquidity
+    '--collect-all', 'sklearn',       // AI models
+    '--hidden-import', 'app.monster.confluence',
+    '--hidden-import', 'app.monster.agents_60',
+    '--hidden-import', 'app.connectors.mt5',
+    '--hidden-import', 'app.connectors.binance',
+    '--hidden-import', 'app.connectors.binance_feed',
     path.join(backendDir, 'marketmind_backend.py'),
   ],
   { cwd: backendDir, stdio: 'inherit' },
