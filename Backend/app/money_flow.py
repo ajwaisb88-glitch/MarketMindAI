@@ -151,6 +151,81 @@ def _fmt(b: float) -> str:
     return f"{'+' if b >= 0 else '-'}${abs(b):.2f}b"
 
 
+def build_warnings(liquidity: dict, classes: list[dict], regime: str,
+                   vix: float, proven: dict, fred: dict) -> list[dict]:
+    """Turn the flow picture into explicit warnings — what is going on and what it means.
+
+    Levels: high (act on it), watch (keep an eye), info (context).
+    """
+    w: list[dict] = []
+    by = {c["id"]: c for c in classes}
+
+    # 1) flows running against the liquidity backdrop — the big one
+    if liquidity.get("dir") == "down" and regime == "RISK-ON":
+        amt = f"{liquidity['flow_b']:+,.1f}B" if liquidity.get("flow_b") is not None else "this week"
+        w.append({"level": "high", "title": "Flows are fighting the liquidity backdrop",
+                  "detail": f"Fed liquidity drained {amt} while money piles into risk assets. "
+                            "Rallies bought into tightening liquidity are the ones that reverse hardest — "
+                            "size positions for a backdrop that is not supporting them."})
+    elif liquidity.get("dir") == "up" and regime == "RISK-OFF":
+        w.append({"level": "watch", "title": "Money hiding despite easing liquidity",
+                  "detail": "Liquidity is being added but flows are defensive — something is worrying "
+                            "participants beyond the Fed. Watch for a catalyst."})
+
+    # 2) the RRP shock absorber
+    rrp = (fred or {}).get("rrp_b")
+    if rrp is not None and rrp < 50:
+        w.append({"level": "high", "title": "Reverse-repo buffer is empty",
+                  "detail": f"RRP is ${rrp:,.0f}B. That facility absorbed drains for two years; with it "
+                            "gone, further liquidity drains hit market liquidity directly instead of "
+                            "being cushioned. Fragility is higher than the index level suggests."})
+
+    # 3) today vs the week — bounce or trend
+    for c in classes:
+        f1, f5 = c["flow_1d_b"], c["flow_5d_b"]
+        if f1 * f5 < 0 and abs(f5) >= 5 and abs(f5) > abs(f1):
+            w.append({"level": "watch",
+                      "title": f"{c['label']}: today is against the week",
+                      "detail": f"Today {_fmt(f1)} but the week is {_fmt(f5)}. A green day inside a red "
+                                "week is a bounce until proven otherwise — do not read it as a trend change."})
+
+    # 4) rotation *inside* a class (children disagreeing)
+    for c in classes:
+        kids = [k for k in c.get("children", []) if abs(k["flow_1d_b"]) > 1]
+        pos = [k for k in kids if k["flow_1d_b"] > 0]
+        neg = [k for k in kids if k["flow_1d_b"] < 0]
+        if pos and neg:
+            top, bot = max(pos, key=lambda k: k["flow_1d_b"]), min(neg, key=lambda k: k["flow_1d_b"])
+            w.append({"level": "watch",
+                      "title": f"{c['label']}: rotation inside the class, not broad buying",
+                      "detail": f"{top['label']} {_fmt(top['flow_1d_b'])} while {bot['label']} "
+                                f"{_fmt(bot['flow_1d_b'])}. The class total hides a switch between "
+                                "instruments — this is positioning, not fresh money."})
+
+    # 5) dry powder
+    st = by.get("stablecoins")
+    if st and st["flow_1d_b"] < 0:
+        w.append({"level": "watch", "title": "Stablecoin supply shrinking",
+                  "detail": f"Mint/burn is {_fmt(st['flow_1d_b'])} — real dollars leaving the crypto "
+                            "ecosystem, not just rotating. Less dry powder to bid."})
+
+    # 6) the proven signal
+    if proven.get("active"):
+        w.append({"level": "high", "title": "PROVEN SIGNAL ACTIVE — fear pattern on",
+                  "detail": "5d money out of stocks + into bonds with VIX > 20. This is the only rule "
+                            "that passed both out-of-sample halves; historically constructive for gold."})
+
+    # 7) complacency
+    if vix and vix < 15 and regime == "RISK-ON":
+        w.append({"level": "info", "title": "Low volatility with risk-on flows",
+                  "detail": f"VIX {vix:.0f}. Cheap hedges — protection costs little while everyone is comfortable."})
+
+    if not w:
+        w.append({"level": "info", "title": "Nothing unusual in the flows",
+                  "detail": "Liquidity, flows and volatility broadly agree. No divergence worth acting on."})
+    return w
+
+
 def build_flow() -> dict:
     """Full money-flow tree + regime, rotation, risk balance and the proven signal."""
     ytick = [t for _, t in _STOCKS + _BONDS + _COMMODITIES + _CCY] + _HEADER
@@ -258,5 +333,6 @@ def build_flow() -> dict:
         "vix": round(vix, 1), "tnx": round(tnx, 2),
         "liquidity": liquidity, "currencies": currencies,
         "rotation": rotation, "classes": classes, "proven": proven,
+        "warnings": build_warnings(liquidity, classes, regime, vix, proven, fred),
         "story": story, "caveat": _PROXY,
     }
