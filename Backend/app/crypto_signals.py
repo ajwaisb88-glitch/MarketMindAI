@@ -45,10 +45,18 @@ class CryptoSignalService:
         h, l, c = o
         return longterm_signal(c, h, l).as_dict()
 
-    def scalp(self, symbol: str, window_sec: float = 1.0) -> dict:
+    def scalp(self, symbol: str, window_sec: float = 1.0, blocking: bool = True) -> dict:
         from app.manipulation import build_trade_plan
 
-        r = self.feed.report(symbol, window_sec)
+        # blocking=True → guaranteed-fresh live read (use before trading).
+        # blocking=False → instant cached read for the polling UI; the order book
+        # is observed in the background so the request never stalls.
+        r = self.feed.report(symbol, window_sec) if blocking else self.feed.report_cached(symbol)
+        if r is None:
+            return {"type": "scalp", "symbol": symbol, "direction": "NONE",
+                    "status": "warming up — first order-book read pending",
+                    "spoof_probability": None, "pressure_side": None,
+                    "entry": None, "stop_loss": None, "take_profit": None, "risk_reward": None}
         direction = "BUY" if r.predicted_move > 0 else "SELL" if r.predicted_move < 0 else "NONE"
         out = {
             "type": "scalp", "symbol": symbol,

@@ -65,3 +65,33 @@ def test_spoof_report_cached_then_refreshed(monkeypatch):
 def test_scalp_window_is_short_for_the_feed():
     # the feed's observe window is wall-clock sleep — keep it small
     assert ss.MarketMindSource.scalp_window_sec <= 0.5
+
+
+def test_report_cached_never_blocks_the_caller(monkeypatch):
+    """The polling path must not run the slow order-book observation inline."""
+    observed = {"n": 0}
+
+    def _slow_observe(self, symbol, window_sec=1.0):
+        observed["n"] += 1
+        time.sleep(0.5)                 # would stall the request if called inline
+        return ("snap", [])
+
+    class _Rep:
+        probability = 10
+        predicted_move = 0
+    monkeypatch.setattr(bf.BinanceOrderBookFeed, "observe", _slow_observe)
+    monkeypatch.setattr(bf, "spoofing_probability", lambda s, e: _Rep())
+    bf._REPORT_CACHE.clear(); bf._REFRESH_INFLIGHT.clear()
+
+    f = bf.BinanceOrderBookFeed()
+    t0 = time.time()
+    first = f.report_cached("btc", 0.1, stale_after=0)   # empty cache
+    assert (time.time() - t0) < 0.2                        # returned immediately
+    assert first is None                                   # nothing cached yet
+    # the background thread eventually fills the cache
+    for _ in range(30):
+        if bf._REPORT_CACHE.get("btc"):
+            break
+        time.sleep(0.05)
+    assert bf._REPORT_CACHE.get("btc") is not None
+    assert observed["n"] == 1                              # observed once, off-thread

@@ -31,7 +31,7 @@ _bc = BinanceConnector()
 # Every source pulls bars, and the confluence engine pulls 5-6 timeframes. Without
 # this, one feed call refetches the same series many times over. Short TTL keeps
 # signals live while collapsing the duplicate network/terminal round-trips.
-_BAR_TTL = float(os.getenv("MARKETMIND_BAR_TTL_SEC", "10"))
+_BAR_TTL = float(os.getenv("MARKETMIND_BAR_TTL_SEC", "30"))
 _bar_cache: dict[tuple, tuple[float, object]] = {}
 
 
@@ -97,7 +97,9 @@ class MarketMindSource(SignalSource):
                 "grade": intr.get("grade", "-"), "entry": intr.get("entry"),
                 "stop_loss": intr.get("stop_loss"), "take_profit": intr.get("take_profit"),
                 "risk_reward": intr.get("risk_reward"),
-                "scalp": svc.scalp(asset, window_sec=self.scalp_window_sec),
+                # non-blocking: the feed must stay instant; the order book is
+                # observed in the background and refreshed within a few seconds.
+                "scalp": svc.scalp(asset, window_sec=self.scalp_window_sec, blocking=False),
                 "story": "MarketMind intraday + live scalp from the order book."}
 
 

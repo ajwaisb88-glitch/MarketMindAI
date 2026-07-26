@@ -15,6 +15,7 @@ WebSocket depth-diff stream is the precise upgrade, same objects out.
 from __future__ import annotations
 
 import os
+import threading
 import time
 
 import numpy as np
@@ -23,6 +24,8 @@ import numpy as np
 # UI polls. Short cache keeps the feed responsive; pass max_age=0 for a fresh read.
 _REPORT_TTL = float(os.getenv("MARKETMIND_SPOOF_TTL_SEC", "5"))
 _REPORT_CACHE: dict[str, tuple] = {}
+_REFRESH_INFLIGHT: dict[str, bool] = {}
+_REFRESH_LOCK = threading.Lock()
 
 from ..manipulation import FlowEvent, OrderBookSnapshot, spoofing_probability
 from .binance import BinanceConnector
@@ -145,3 +148,34 @@ class BinanceOrderBookFeed:
         rep = spoofing_probability(snap, events)
         _REPORT_CACHE[key] = (now, rep)
         return rep
+
+    def report_cached(self, symbol: str, window_sec: float = 0.35, stale_after: float = 5.0):
+        """Non-blocking spoof report for the polling UI.
+
+        Returns the last cached report INSTANTLY (or None on the very first call
+        before any observation exists), and kicks off a single background refresh
+        when the cache is older than ``stale_after``. The slow order-book
+        observation never blocks the request path — the data is at most a few
+        seconds stale, which is the right trade for a display feed. Use
+        ``report(..., max_age=0)`` for a guaranteed-fresh read before trading.
+        """
+        key = symbol.lower()
+        hit = _REPORT_CACHE.get(key)
+        age = (time.time() - hit[0]) if hit else float("inf")
+        if age >= stale_after:
+            with _REFRESH_LOCK:
+                start = not _REFRESH_INFLIGHT.get(key)
+                if start:
+                    _REFRESH_INFLIGHT[key] = True
+            if start:
+                def _bg():
+                    try:
+                        snap, events = self.observe(symbol, window_sec)
+                        _REPORT_CACHE[key] = (time.time(), spoofing_probability(snap, events))
+                    except Exception:
+                        pass
+                    finally:
+                        with _REFRESH_LOCK:
+                            _REFRESH_INFLIGHT[key] = False
+                threading.Thread(target=_bg, daemon=True).start()
+        return hit[1] if hit else None

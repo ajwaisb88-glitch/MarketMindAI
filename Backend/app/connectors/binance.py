@@ -19,7 +19,7 @@ from typing import Optional
 import requests
 
 # klines are shared by several engines in one pass — cache briefly
-_KLINE_TTL = float(os.getenv("MARKETMIND_KLINE_TTL_SEC", "10"))
+_KLINE_TTL = float(os.getenv("MARKETMIND_KLINE_TTL_SEC", "30"))
 _KLINE_CACHE: dict[tuple, tuple[float, list]] = {}
 
 # Primary host; binance.us is the fallback for US-restricted regions.
