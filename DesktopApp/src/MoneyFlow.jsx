@@ -23,17 +23,40 @@ export default function MoneyFlow({ apiBase }) {
   const stateRef = useRef({ nodes: [], edges: [], particles: [], W: 0, H: 530 });
   const rafRef = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (refresh = false) => {
     setLoading(true); setError(null);
     try {
-      const res = await fetch(`${apiBase}/moneyflow`);
+      const res = await fetch(`${apiBase}/moneyflow${refresh ? '?refresh=1' : ''}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData(await res.json());
+      setError(null);
     } catch (e) { setError(String(e.message || e)); }
     setLoading(false);
   }, [apiBase]);
 
-  useEffect(() => { load(); }, [load]);
+  // On mount, keep retrying until the backend is up — it can take ~15-30s to
+  // boot and warm the money-flow data, and we never want the panel stuck on
+  // "Failed to fetch" just because it loaded a few seconds too early.
+  useEffect(() => {
+    let alive = true, tries = 0;
+    const attempt = async () => {
+      if (!alive) return;
+      try {
+        const res = await fetch(`${apiBase}/moneyflow`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!alive) return;
+        setData(await res.json()); setError(null); setLoading(false);
+      } catch (e) {
+        tries += 1;
+        if (!alive) return;
+        setLoading(true);
+        setError(tries >= 15 ? String(e.message || e) : null);   // give up after ~45s
+        setTimeout(attempt, 3000);
+      }
+    };
+    attempt();
+    return () => { alive = false; };
+  }, [apiBase]);
 
   // ── build the node/edge layout ──
   const layout = useCallback(() => {
@@ -203,8 +226,14 @@ export default function MoneyFlow({ apiBase }) {
     if (hit) setEvidence({ title: hit.title, lines: hit.evidence || [] });
   };
 
-  if (error) return <section className="card error">⚠ Money flow unavailable — {error}</section>;
-  if (!data) return <section className="card mf-loading">{loading ? 'Loading money flow…' : '—'}</section>;
+  if (!data && error) return (
+    <section className="card error">⚠ Money flow unavailable — {error}
+      {' '}<button className="mf-refresh" onClick={() => load(true)}>Retry</button>
+    </section>
+  );
+  if (!data) return (
+    <section className="card mf-loading">Loading money flow… (first read pulls live Fed, Yahoo &amp; Binance data — up to ~15s)</section>
+  );
 
   const L = data.liquidity || {};
   const draining = L.dir === 'down';
@@ -230,7 +259,7 @@ export default function MoneyFlow({ apiBase }) {
             <span className={`v ${data.vix > 20 ? 'out' : ''}`}>{data.vix}</span></div>
           <div className="mf-hs regime"><span className="k">REGIME</span><span className="v">{data.regime}</span></div>
         </div>
-        <button className="mf-refresh" onClick={load} disabled={loading}>
+        <button className="mf-refresh" onClick={() => load(true)} disabled={loading}>
           {loading ? '…' : '↻ Refresh'}
         </button>
       </div>

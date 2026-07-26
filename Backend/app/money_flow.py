@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+import time
 
 import requests
 
@@ -224,6 +226,39 @@ def build_warnings(liquidity: dict, classes: list[dict], regime: str,
         w.append({"level": "info", "title": "Nothing unusual in the flows",
                   "detail": "Liquidity, flows and volatility broadly agree. No divergence worth acting on."})
     return w
+
+
+# Money flow is slow-moving daily data drawn from several live sources (~10-13s
+# to compute). Cache it so the UI is instant after the first build, and warm it
+# in the background at startup so the first view never waits.
+_FLOW_TTL = float(os.getenv("MARKETMIND_MONEYFLOW_TTL_SEC", "180"))
+_flow_cache: dict = {"ts": 0.0, "data": None}
+_flow_lock = threading.Lock()
+
+
+def get_flow(force: bool = False) -> dict:
+    """Cached money-flow tree — computes at most once per _FLOW_TTL seconds."""
+    now = time.time()
+    if not force and _flow_cache["data"] and (now - _flow_cache["ts"]) < _FLOW_TTL:
+        return _flow_cache["data"]
+    with _flow_lock:                       # collapse concurrent first-hits into one build
+        if not force and _flow_cache["data"] and (time.time() - _flow_cache["ts"]) < _FLOW_TTL:
+            return _flow_cache["data"]
+        data = build_flow()
+        _flow_cache["data"] = data
+        _flow_cache["ts"] = time.time()
+        return data
+
+
+def warm_flow() -> None:
+    """Pre-compute the flow in a background thread (called at startup)."""
+    def _bg():
+        try:
+            get_flow(force=True)
+            logger.info("money flow warmed")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("money flow warm failed: %s", exc)
+    threading.Thread(target=_bg, daemon=True).start()
 
 
 def build_flow() -> dict:

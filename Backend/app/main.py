@@ -56,6 +56,17 @@ origins = [
     "http://127.0.0.1:4173",
 ]
 
+@app.on_event("startup")
+async def _warm():
+    """Pre-compute the slow money-flow tree in the background so the first view
+    is instant instead of waiting ~13s on live data."""
+    try:
+        from app.money_flow import warm_flow
+        warm_flow()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("startup warm failed: %s", exc)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -540,12 +551,12 @@ async def license_status():
 
 
 @app.get("/moneyflow")
-async def moneyflow():
+async def moneyflow(refresh: bool = False):
     """Global money flow tree: liquidity → currencies → asset classes → instruments,
     with regime, rotation and the proven risk_off_vix signal. Separate engine —
-    it never feeds the confluence/trade score."""
-    from app.money_flow import build_flow
-    return build_flow()
+    it never feeds the confluence/trade score. Cached (~3 min); pass refresh=1 to force."""
+    from app.money_flow import get_flow
+    return get_flow(force=refresh)
 
 
 @app.get("/signals/sources")
