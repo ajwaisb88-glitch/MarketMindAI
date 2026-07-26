@@ -530,6 +530,15 @@ async def strategy_backtest_csv(
     }
 
 
+@app.get("/license")
+async def license_status():
+    """Current license state + this machine's id (for machine-locked keys)."""
+    from app.licensing import current_status, machine_id
+    s = current_status().as_dict()
+    s["machine_id"] = machine_id()
+    return s
+
+
 @app.get("/moneyflow")
 async def moneyflow():
     """Global money flow tree: liquidity → currencies → asset classes → instruments,
