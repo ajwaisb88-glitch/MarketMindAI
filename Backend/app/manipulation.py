@@ -313,6 +313,71 @@ def market_profile(asset: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# LIVE price seam — the simulated book is built around a *real* mid so the radar,
+# watchlist and Predict tab quote the true market, not the static profile number.
+#   * crypto  -> Binance last price (key-free; gold via PAXGUSDT ≈ spot gold)
+#   * gold/fx -> MT5 live quote if a terminal is connected, else Binance PAXG
+#   * else    -> the profile's mid as a last-resort fallback (never a stale crash)
+# Cached briefly so a full scan doesn't hammer the APIs.
+# ---------------------------------------------------------------------------
+_MID_TTL = 12.0
+_mid_cache: dict = {}
+# assets Binance can price directly (crypto + PAXG gold proxy). class-based so
+# every crypto/meme/stable coin in MARKET_PROFILES is covered automatically.
+_BINANCE_GOLD = {"gold", "xauusd", "paxg"}
+
+
+def _binance_mid(asset: str) -> float | None:
+    try:
+        from .connectors.binance import SYMBOL_MAP, BinanceConnector
+        # Known aliases (btc, gold→PAXG…) resolve via the map; every other coin is
+        # its USDT pair (sol→SOLUSDT, xrp→XRPUSDT…). Bad symbols just return None.
+        sym = SYMBOL_MAP.get(asset, f"{asset.upper()}USDT")
+        k = BinanceConnector().klines(sym, "1m", 1)
+        return float(k[-1]["close"]) if k else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _mt5_mid(asset: str) -> float | None:
+    try:
+        from .connectors import mt5
+        q = mt5.quote(asset)
+        if q and q.get("bid") and q.get("ask"):
+            return (float(q["bid"]) + float(q["ask"])) / 2.0
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def live_mid(asset: str, profile: dict | None = None) -> float:
+    """Best available live mid for *asset*, cached; profile mid as last resort."""
+    import os
+    import time
+    asset = asset.lower()
+    p = profile or market_profile(asset)
+    # Offline / test mode: skip the network and use the profile mid deterministically.
+    if os.getenv("MARKETMIND_LIVE_PRICES", "1") == "0":
+        return float(p["mid"])
+    hit = _mid_cache.get(asset)
+    if hit and (time.time() - hit[0]) < _MID_TTL:
+        return hit[1]
+
+    mid: float | None = None
+    if p.get("crypto") and p.get("class") != "metal":
+        mid = _binance_mid(asset)               # btc/eth/meme/stable coins
+    elif asset in _BINANCE_GOLD or p.get("class") == "metal":
+        mid = _mt5_mid(asset) or _binance_mid("gold")   # MT5 gold, else PAXG proxy
+    else:
+        mid = _mt5_mid(asset)                   # forex / index / energy via MT5
+
+    if not mid or mid <= 0:
+        mid = float(p["mid"])                   # fallback — never break the scan
+    _mid_cache[asset] = (time.time(), mid)
+    return mid
+
+
+# ---------------------------------------------------------------------------
 # Signal grading — A+ / A1 / A / B / C / D / F
 # ---------------------------------------------------------------------------
 # A grade fuses two independent things a trader actually cares about:
@@ -528,9 +593,14 @@ class OrderBookFeed:
 
     @classmethod
     def for_asset(cls, asset: str, seed: int = 0) -> "OrderBookFeed":
-        """Build a feed configured for a specific instrument's price/tick."""
+        """Build a feed configured for a specific instrument's price/tick.
+
+        The mid is the *live* market price (Binance / MT5), so the radar,
+        watchlist and Predict tab all quote the real market — the static profile
+        mid is only a fallback when no live source answers.
+        """
         p = market_profile(asset)
-        return cls(mid=p["mid"], tick=p["tick"], seed=seed, asset=asset.lower(),
+        return cls(mid=live_mid(asset, p), tick=p["tick"], seed=seed, asset=asset.lower(),
                    crypto=p["crypto"])
 
     def _base_book(self, mid: float, levels: int = 10) -> OrderBookSnapshot:

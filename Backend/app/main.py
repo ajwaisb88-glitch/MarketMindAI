@@ -153,6 +153,22 @@ def _fetch_closes(ticker: str, period: str = "3mo") -> Optional[np.ndarray]:
         return None
 
 
+def _fetch_closes_live_first(asset: str, ticker: str) -> Optional[np.ndarray]:
+    """Daily closes with a LIVE-first policy (no stale Yahoo for the assets we can
+    price directly): crypto — and gold via PAX Gold (PAXGUSDT) — come from Binance
+    key-free; everything else still falls back to yfinance.
+    """
+    if asset.lower() in CRYPTO_ASSETS:
+        try:
+            from app.connectors.binance import BinanceConnector
+            k = BinanceConnector().klines(asset, "1d", 400)
+            if k and len(k) > 30:
+                return np.array([b["close"] for b in k], dtype=float)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Binance closes failed for %s: %s", asset, exc)
+    return _fetch_closes(ticker)
+
+
 def _fetch_ohlc(asset: str, intraday: bool) -> tuple:
     """Return (highs, lows, closes, source) for an asset.
 
@@ -252,7 +268,7 @@ async def predict(asset: str = "gold"):
             detail=f"Unknown asset '{asset}'. Available: {sorted(ASSET_TICKERS)}",
         )
 
-    closes = _fetch_closes(ticker)
+    closes = _fetch_closes_live_first(key, ticker)
     if closes is None or len(closes) == 0:
         # Graceful fallback so smoke tests still pass when network is unavailable
         return {"asset": key, "prediction": "neutral", "confidence": 0.5, "note": "live data unavailable"}
