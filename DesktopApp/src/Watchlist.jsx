@@ -6,12 +6,12 @@ const GRADE_COLORS = {
 };
 const GRADE_RANK = { 'A+': 6, A1: 5, A: 4, B: 3, C: 2, D: 1, F: 0, 'NO-TRADE': -1 };
 
-// The filter chips: label -> minimum rank to show.
+// The filter chips: label -> minimum rank to show. Default is A+ only.
 const FILTERS = [
-  { key: 'all', label: 'All', min: -99 },
-  { key: 'B', label: '≥ B', min: 3 },
-  { key: 'A', label: '≥ A', min: 4 },
+  { key: 'aplus', label: 'A+ only', min: 6 },
   { key: 'top', label: 'A+ / A1', min: 5 },
+  { key: 'A', label: '≥ A', min: 4 },
+  { key: 'all', label: 'All', min: -99 },
 ];
 
 function GradePill({ grade }) {
@@ -35,7 +35,7 @@ export default function Watchlist({ apiBase }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [filter, setFilter] = useState('A');
+  const [filter, setFilter] = useState('aplus');
   const [sortKey, setSortKey] = useState('score');
 
   const load = useCallback(async () => {
@@ -65,7 +65,7 @@ export default function Watchlist({ apiBase }) {
       return 0;
     });
 
-  const actionable = rows.filter(r => (GRADE_RANK[r.grade] ?? -1) >= 4).length;
+  const actionable = rows.filter(r => (GRADE_RANK[r.grade] ?? -1) >= 6).length;
 
   return (
     <section className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

@@ -12,7 +12,7 @@ const MODE_HELP = {
 const META = {
   monster: { icon: '👹', tag: 'GOLD CONFLUENCE', color: '#e3b341' },
   whale: { icon: '🐋', tag: 'BETTER VOLUME', color: '#58a6ff' },
-  marketmind: { icon: '🧠', tag: 'CRYPTO SPOOF / SCALP', color: '#3fb950' },
+  marketmind: { icon: '🧠', tag: '15m → 4h CONFLUENCE', color: '#3fb950' },
 };
 const ORDER = ['monster', 'whale', 'marketmind'];
 
@@ -90,7 +90,9 @@ export default function Signals({ apiBase }) {
       </div>
 
       <div className="sg-note">
-        Three independent systems — <b>never blended</b>. Pick a mode per system:
+        <span className="sg-elite">★ A+ ONLY</span>
+        Three independent systems — <b>never blended</b>. Only <b>elite A+</b> setups are
+        actionable; anything weaker shows as “no A+ setup”. Pick a mode per system:
         <span className="sg-chip off">Off</span><span className="sg-chip man">Manual</span>
         <span className="sg-chip auto">Auto → MT5</span>
       </div>

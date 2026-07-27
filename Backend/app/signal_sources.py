@@ -26,6 +26,16 @@ from .connectors.binance import BinanceConnector
 _SEL_FILE = os.getenv("MARKETMIND_SOURCES_FILE", "selected_sources.json")
 _bc = BinanceConnector()
 
+# Elite-only policy: by default the feed only surfaces A+ setups (across every
+# market). Anything below the bar is shown as "no A+ setup", never as a trade.
+MIN_GRADE = os.getenv("MARKETMIND_MIN_GRADE", "A+")
+_GRADE_RANK = {"A+": 6, "A1": 5, "A": 4, "B": 3, "C": 2, "D": 1, "F": 0,
+               "-": -1, "NONE": -1, "NO-TRADE": -1}
+
+
+def grade_ok(grade: str) -> bool:
+    return _GRADE_RANK.get(str(grade), -1) >= _GRADE_RANK.get(MIN_GRADE, 6)
+
 
 # ── shared bar cache ───────────────────────────────
 # Every source pulls bars, and the confluence engine pulls 5-6 timeframes. Without
@@ -81,26 +91,54 @@ class SignalSource:
 
 class MarketMindSource(SignalSource):
     key, name = "marketmind", "MarketMind"
-    description = "Crypto — spoof scalp + intraday + longterm (Binance order flow)"
-    engine = "spoof-radar / EMA-RSI / momentum"
+    description = "Crypto — 15m→4h multi-timeframe confluence (Binance)"
+    engine = "15m·1h·4h confluence"
 
-    # order-book observation window; the feed uses a short one so the endpoint
-    # stays responsive (it is pure wall-clock sleep between depth snapshots).
-    scalp_window_sec = float(os.getenv("MARKETMIND_SCALP_WINDOW_SEC", "0.35"))
+    # Minimum 15-minute base up to higher timeframes — NO sub-15m scalp. This is
+    # what stops the signal from flipping every second: it only fires when 15m,
+    # 1h and 4h agree, which is a slow, stable, elite condition.
+    _TFS = ("15m", "1h", "4h")
 
     def get(self, asset: str) -> Optional[dict]:
+        from .strategies import intraday_signal
         from .crypto_signals import CryptoSignalService
         svc = CryptoSignalService()
-        intr = svc.intraday(asset) or {}
+
+        legs: dict[str, dict] = {}
+        for tf in self._TFS:
+            o = svc._ohlc(asset, tf, 300)
+            if o is not None:
+                legs[tf] = intraday_signal(*o).as_dict()
+
+        base = legs.get("15m")
+        tf_view = {tf: (legs[tf]["direction"] if tf in legs else "n/a") for tf in self._TFS}
+        if not base:
+            return {"source": self.key, "engine": self.engine, "asset": asset,
+                    "direction": "NONE", "grade": "-", "timeframes": tf_view,
+                    "story": "No 15m data yet.", "entry": None, "stop_loss": None,
+                    "take_profit": None, "risk_reward": None}
+
+        base_dir = base["direction"]            # long / short / flat
+        if base_dir not in ("long", "short"):
+            return {"source": self.key, "engine": self.engine, "asset": asset,
+                    "direction": "NONE", "grade": "-", "timeframes": tf_view,
+                    "story": "15m is flat — no trend to trade.", "entry": None,
+                    "stop_loss": None, "take_profit": None, "risk_reward": None}
+
+        # how many of 15m/1h/4h agree with the 15m direction (the confluence gate)
+        agree = [tf for tf in self._TFS if legs.get(tf, {}).get("direction") == base_dir]
+        n = len(agree)
+        grade = "A+" if n == 3 else "A1" if n == 2 else "A"
+        direction = "SELL" if base_dir == "short" else "BUY"
+        higher = ", ".join(t for t in ("1h", "4h") if t in agree) or "none"
+        story = (f"{n}/3 timeframes aligned {direction} (15m entry, confirmed by {higher}). "
+                 f"A+ needs all three — 15m·1h·4h — pointing the same way.")
+
         return {"source": self.key, "engine": self.engine, "asset": asset,
-                "direction": ("SELL" if intr.get("direction") == "short" else "BUY" if intr.get("direction") == "long" else "NONE"),
-                "grade": intr.get("grade", "-"), "entry": intr.get("entry"),
-                "stop_loss": intr.get("stop_loss"), "take_profit": intr.get("take_profit"),
-                "risk_reward": intr.get("risk_reward"),
-                # non-blocking: the feed must stay instant; the order book is
-                # observed in the background and refreshed within a few seconds.
-                "scalp": svc.scalp(asset, window_sec=self.scalp_window_sec, blocking=False),
-                "story": "MarketMind intraday + live scalp from the order book."}
+                "direction": direction, "grade": grade,
+                "entry": base["entry"], "stop_loss": base["stop_loss"],
+                "take_profit": base["take_profit"], "risk_reward": base["risk_reward"],
+                "timeframes": tf_view, "agree": n, "story": story}
 
 
 class WhaleSource(SignalSource):
@@ -284,7 +322,16 @@ class SignalSelector:
                 continue
             if sig:
                 sig["mode"] = mode
-                if mode == "auto":
+                sig["min_grade"] = MIN_GRADE
+                # Elite-only: below the A+ bar, show the system but no trade.
+                if sig.get("direction") in ("BUY", "SELL") and not grade_ok(sig.get("grade", "-")):
+                    sig["below_min_grade"] = sig.get("grade", "-")
+                    sig["direction"] = "NONE"
+                    sig["entry"] = sig["stop_loss"] = sig["take_profit"] = sig["risk_reward"] = None
+                    sig["story"] = (f"No {MIN_GRADE} setup — best read is grade "
+                                    f"{sig['below_min_grade']}. Holding out for an elite signal.")
+                # Only genuine A+ signals get routed to MT4/MT5.
+                if mode == "auto" and sig.get("direction") in ("BUY", "SELL"):
                     sig["execution"] = executor.route(sig, lots=lots)
             out[key] = sig
         return {"asset": asset, "modes": self.modes, "signals": out}

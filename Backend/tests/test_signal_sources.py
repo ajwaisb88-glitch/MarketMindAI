@@ -51,7 +51,8 @@ def test_auto_signal_is_routed_to_terminal(tmp_path, monkeypatch):
     class _Fake(ss.SignalSource):
         key = "monster"
         def get(self, asset):
-            return {"source": "monster", "asset": asset, "direction": "BUY",
+            # Only A+ setups are actionable/routed under the elite-only policy.
+            return {"source": "monster", "asset": asset, "direction": "BUY", "grade": "A+",
                     "entry": 100.0, "stop_loss": 98.0, "take_profit": 104.0}
     monkeypatch.setitem(ss.REGISTRY, "monster", _Fake())
 
@@ -80,7 +81,8 @@ def test_manual_signals_never_reach_the_router(tmp_path, monkeypatch):
     class _Fake(ss.SignalSource):
         key = "monster"
         def get(self, asset):
-            return {"source": "monster", "asset": asset, "direction": "BUY",
+            # Only A+ setups are actionable/routed under the elite-only policy.
+            return {"source": "monster", "asset": asset, "direction": "BUY", "grade": "A+",
                     "entry": 100.0, "stop_loss": 98.0, "take_profit": 104.0}
     monkeypatch.setitem(ss.REGISTRY, "monster", _Fake())
 

@@ -34,6 +34,10 @@ SYMBOL_MAP = {
     "DOGE-USD": "DOGEUSDT", "SHIB-USD": "SHIBUSDT", "PEPE-USD": "PEPEUSDT",
     "USDT-USD": "USDCUSDT", "USDC-USD": "USDCUSDT",
     "btc": "BTCUSDT", "eth": "ETHUSDT", "doge": "DOGEUSDT",
+    # majors / alts / memes — lowercase aliases so every engine resolves them
+    "bnb": "BNBUSDT", "sol": "SOLUSDT", "xrp": "XRPUSDT", "ada": "ADAUSDT",
+    "avax": "AVAXUSDT", "link": "LINKUSDT", "shib": "SHIBUSDT", "pepe": "PEPEUSDT",
+    "floki": "FLOKIUSDT", "wif": "WIFUSDT", "bonk": "BONKUSDT",
     # gold via PAX Gold token
     "gold": "PAXGUSDT", "xauusd": "PAXGUSDT", "xauusdt": "PAXGUSDT", "paxg": "PAXGUSDT",
 }

@@ -62,9 +62,13 @@ def test_spoof_report_cached_then_refreshed(monkeypatch):
     assert observed["n"] == 2
 
 
-def test_scalp_window_is_short_for_the_feed():
-    # the feed's observe window is wall-clock sleep — keep it small
-    assert ss.MarketMindSource.scalp_window_sec <= 0.5
+def test_marketmind_uses_15m_and_higher_only():
+    # minimum-timeframe policy: no sub-15m scalp (that's what made the signal
+    # flip every tick). MarketMind confirms across 15m and higher only.
+    allowed = {"15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w"}
+    assert set(ss.MarketMindSource._TFS) <= allowed
+    assert "15m" in ss.MarketMindSource._TFS
+    assert not hasattr(ss.MarketMindSource, "scalp_window_sec")
 
 
 def test_report_cached_never_blocks_the_caller(monkeypatch):

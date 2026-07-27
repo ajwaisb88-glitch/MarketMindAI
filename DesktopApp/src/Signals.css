@@ -36,6 +36,8 @@
 .sg-chip.off { background: #30363d55; color: #8b949e; }
 .sg-chip.man { background: #58a6ff22; color: #58a6ff; }
 .sg-chip.auto { background: #3fb95022; color: #3fb950; }
+.sg-elite { font-weight: 800; font-size: 11px; letter-spacing: 1px; color: #0d1117;
+  background: linear-gradient(90deg, #e3b341, #f0c85a); padding: 3px 9px; border-radius: 6px; }
 
 .sg-err { padding: 12px 14px; border-radius: 9px; background: #160809; border: 1px solid #ff4d4d44; color: #ff9b95; margin-bottom: 12px; }
 
