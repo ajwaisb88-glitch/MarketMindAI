@@ -5,12 +5,9 @@
   font-family: ui-monospace, "SF Mono", Consolas, Menlo, monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mf-ink);
-  /* Break out of the narrow (720px) app column: this page is a desktop-width
-     dashboard, so centre a wider block on the viewport regardless of the parent. */
-  width: min(96vw, 1360px);
-  position: relative;
-  left: 50%;
-  transform: translateX(-50%);
+  /* The app column is now desktop-width and Money Flow has its own page tab, so
+     it simply fills the column — aligned with every other page. */
+  width: 100%;
   text-align: left;
 }
 .mf .in { color: var(--mf-in); }

@@ -3,6 +3,16 @@ import './App.css';
 import ManipulationRadar from './ManipulationRadar';
 import Watchlist from './Watchlist';
 import MoneyFlow from './MoneyFlow';
+import Signals from './Signals';
+
+const TABS = [
+  { key: 'signals', label: '🚨 Signals' },
+  { key: 'predict', label: '📈 Predict' },
+  { key: 'moneyflow', label: '💧 Money Flow' },
+  { key: 'watchlist', label: '📋 Watchlist' },
+  { key: 'radar', label: '📡 Radar' },
+];
+const TAB_KEY = 'mm_tab_v1';
 
 const LOCAL_API = 'http://127.0.0.1:8000';
 const API_SETTINGS_KEY = 'mm_api_settings_v1';
@@ -59,7 +69,10 @@ export default function App() {
   const [apiSettings, setApiSettings] = useState(loadApiSettings);
   const [showSettings, setShowSettings] = useState(false);
   const [backendInfo, setBackendInfo] = useState(null);
+  const [tab, setTab] = useState(() => localStorage.getItem(TAB_KEY) || 'signals');
   const pollRef = useRef(null);
+
+  useEffect(() => { try { localStorage.setItem(TAB_KEY, tab); } catch {} }, [tab]);
   const apiBase = apiSettings.useLocal || !apiSettings.remoteUrl.trim()
     ? LOCAL_API
     : apiSettings.remoteUrl.trim().replace(/\/$/, '');
@@ -148,6 +161,13 @@ export default function App() {
         <button className="btn-sm" onClick={() => setShowSettings((visible) => !visible)}>Settings</button>
       </header>
 
+      <nav className="tabnav">
+        {TABS.map((t) => (
+          <button key={t.key} className={`tabnav-btn ${tab === t.key ? 'active' : ''}`}
+            onClick={() => setTab(t.key)}>{t.label}</button>
+        ))}
+      </nav>
+
       <main className="main">
         {showSettings && (
           <section className="card settings">
@@ -171,7 +191,14 @@ export default function App() {
             {backendInfo?.bundled && <div className="sub">Bundled API: {backendInfo.running ? 'started' : 'starting'}</div>}
           </section>
         )}
-        {/* ── Controls ── */}
+        {/* ── Signals / Money Flow / Watchlist / Radar pages ── */}
+        {tab === 'signals' && <Signals apiBase={apiBase} />}
+        {tab === 'moneyflow' && <MoneyFlow apiBase={apiBase} />}
+        {tab === 'watchlist' && <Watchlist apiBase={apiBase} />}
+        {tab === 'radar' && <ManipulationRadar apiBase={apiBase} />}
+
+        {/* ── Predict page ── */}
+        {tab === 'predict' && (
         <section className="card controls">
           <div className="row">
             <label>Asset</label>
@@ -192,18 +219,11 @@ export default function App() {
             {loading ? 'Loading…' : 'Predict now'}
           </button>
         </section>
-
-        {/* ── All-coins watchlist ── */}
-        <Watchlist apiBase={apiBase} />
-
-        {/* ── Manipulation radar ── */}
-        <MoneyFlow apiBase={apiBase} />
-
-        <ManipulationRadar apiBase={apiBase} />
+        )}
 
         {/* ── Result ── */}
-        {error && <div className="card error">⚠ {error}</div>}
-        {result && (
+        {tab === 'predict' && error && <div className="card error">⚠ {error}</div>}
+        {tab === 'predict' && result && (
           <section className="card result">
             <div className="result-row">
               <span className="result-label">Signal</span>
@@ -234,7 +254,7 @@ export default function App() {
         )}
 
         {/* ── History ── */}
-        {history.length > 0 && (
+        {tab === 'predict' && history.length > 0 && (
           <section className="card history">
             <div className="history-header">
               <h3>History ({history.length})</h3>
