@@ -620,6 +620,14 @@ async def signals_performance():
     return signal_tracker.stats()
 
 
+@app.get("/news")
+async def news_radar(days: int = 21):
+    """Upcoming high-impact US economic events with their gold impact. Real release
+    schedule; impact/bias/typical-move are backtested reference values."""
+    from app import news_radar
+    return news_radar.get_news(days=days)
+
+
 @app.get("/crypto/signals")
 async def crypto_signals(asset: str = "btc", scalp: bool = True):
     """Live crypto signals from Binance (key-free): the three SEPARATE types —
