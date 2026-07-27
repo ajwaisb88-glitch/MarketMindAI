@@ -267,13 +267,26 @@ MARKET_PROFILES: dict[str, dict] = {
     # majors — crypto
     "btc":    {"mid": 60000.0, "tick": 0.5,     "crypto": True,  "scalp_move_pct": 0.30, "class": "crypto",  "fmp": "BTCUSD"},
     "eth":    {"mid": 3000.0,  "tick": 0.05,    "crypto": True,  "scalp_move_pct": 0.35, "class": "crypto",  "fmp": "ETHUSD"},
+    "bnb":    {"mid": 600.0,   "tick": 0.1,     "crypto": True,  "scalp_move_pct": 0.35, "class": "crypto",  "fmp": "BNBUSD"},
+    "sol":    {"mid": 150.0,   "tick": 0.01,    "crypto": True,  "scalp_move_pct": 0.40, "class": "crypto",  "fmp": "SOLUSD"},
+    "xrp":    {"mid": 0.55,    "tick": 0.0001,  "crypto": True,  "scalp_move_pct": 0.40, "class": "crypto",  "fmp": "XRPUSD"},
+    # layer-1 / alt coins — higher beta than majors
+    "ada":    {"mid": 0.45,    "tick": 0.0001,  "crypto": True,  "scalp_move_pct": 0.45, "class": "crypto",  "fmp": "ADAUSD"},
+    "avax":   {"mid": 35.0,    "tick": 0.01,    "crypto": True,  "scalp_move_pct": 0.45, "class": "crypto",  "fmp": "AVAXUSD"},
+    "link":   {"mid": 15.0,    "tick": 0.001,   "crypto": True,  "scalp_move_pct": 0.45, "class": "crypto",  "fmp": "LINKUSD"},
     # meme coins
     "doge":   {"mid": 0.15,    "tick": 0.00001, "crypto": True,  "scalp_move_pct": 0.50, "class": "meme",    "fmp": "DOGEUSD"},
     "shib":   {"mid": 2.5e-5,  "tick": 1e-9,    "crypto": True,  "scalp_move_pct": 0.60, "class": "meme",    "fmp": "SHIBUSD"},
     "pepe":   {"mid": 1.2e-5,  "tick": 1e-10,   "crypto": True,  "scalp_move_pct": 0.70, "class": "meme",    "fmp": "PEPEUSD"},
+    "floki":  {"mid": 2.0e-4,  "tick": 1e-8,    "crypto": True,  "scalp_move_pct": 0.70, "class": "meme",    "fmp": "FLOKIUSD"},
+    "wif":    {"mid": 2.5,     "tick": 0.0001,  "crypto": True,  "scalp_move_pct": 0.70, "class": "meme",    "fmp": "WIFUSD"},
+    "bonk":   {"mid": 2.5e-5,  "tick": 1e-9,    "crypto": True,  "scalp_move_pct": 0.75, "class": "meme",    "fmp": "BONKUSD"},
+    # tokenised gold (trades on Binance as a coin, tracks spot gold)
+    "paxg":   {"mid": 2400.0,  "tick": 0.01,    "crypto": True,  "scalp_move_pct": 0.35, "class": "metal",   "fmp": "PAXGUSD"},
     # stablecoins (pegged — effectively untradable for signals)
     "usdt":   {"mid": 1.0,     "tick": 0.0001,  "crypto": True,  "scalp_move_pct": 0.03, "class": "stable",  "fmp": "USDTUSD"},
     "usdc":   {"mid": 1.0,     "tick": 0.0001,  "crypto": True,  "scalp_move_pct": 0.03, "class": "stable",  "fmp": "USDCUSD"},
+    "dai":    {"mid": 1.0,     "tick": 0.0001,  "crypto": True,  "scalp_move_pct": 0.03, "class": "stable",  "fmp": "DAIUSD"},
     # metals
     "gold":   {"mid": 2400.0,  "tick": 0.1,     "crypto": False, "scalp_move_pct": 0.40, "class": "metal",   "fmp": "GCUSD"},
     "xauusd": {"mid": 2400.0,  "tick": 0.01,    "crypto": False, "scalp_move_pct": 0.40, "class": "metal",   "fmp": "XAUUSD"},

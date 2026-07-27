@@ -5,6 +5,13 @@
   font-family: ui-monospace, "SF Mono", Consolas, Menlo, monospace;
   font-variant-numeric: tabular-nums;
   color: var(--mf-ink);
+  /* Break out of the narrow (720px) app column: this page is a desktop-width
+     dashboard, so centre a wider block on the viewport regardless of the parent. */
+  width: min(96vw, 1360px);
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: left;
 }
 .mf .in { color: var(--mf-in); }
 .mf .out { color: var(--mf-out); }
@@ -42,8 +49,29 @@
 .mf-ph .psub { font-size: 9px; color: var(--mf-faint); letter-spacing: 1px; text-transform: uppercase; }
 .mf-foot { margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--mf-line); font-size: 10px; color: var(--mf-faint); }
 
+/* student "plain English" strip */
+.mf-student {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 11px 16px; margin-bottom: 11px; border-radius: 12px;
+  border: 1px solid #2ea04333; background: linear-gradient(90deg, #071b10, #0b1017 65%);
+}
+.mf-student-tag {
+  font-family: system-ui, sans-serif; font-weight: 800; font-size: 10px; letter-spacing: 1.5px;
+  color: #3fb950; white-space: nowrap;
+}
+.mf-student-txt { font-family: system-ui, sans-serif; font-size: 13px; line-height: 1.55; color: #cfe9d8; }
+
 /* warnings */
 .mf-warns .mf-ph .pt { color: #ffb84d; }
+.mf-warn .w-explain {
+  margin-top: 6px; font-family: system-ui, sans-serif; font-size: 11px; line-height: 1.5;
+  color: #9fd8b4; background: #0a1611; border-left: 2px solid #2ea04355;
+  padding: 5px 9px; border-radius: 4px;
+}
+.mf-warn .w-eltag {
+  display: inline-block; font-weight: 800; font-size: 8.5px; letter-spacing: 1px;
+  color: #3fb950; margin-right: 7px; opacity: .9;
+}
 .mf-warn {
   display: flex; gap: 12px; padding: 11px 13px; border-radius: 10px; margin-bottom: 8px;
   border: 1px solid var(--mf-line2); background: #0a0f16; border-left-width: 3px;

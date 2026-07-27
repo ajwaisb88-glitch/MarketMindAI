@@ -63,13 +63,13 @@ export default function MoneyFlow({ apiBase }) {
     const cv = canvasRef.current; if (!cv || !data) return;
     const S = stateRef.current;
     const nodes = [], edges = [];
-    const W = Math.max((cv.parentElement?.clientWidth || 1240) - 2, 1240);
+    const W = Math.max((cv.parentElement?.clientWidth || 1240) - 2, 1100);
     cv.style.width = `${W}px`;
     const cx = W / 2;
 
     const L = data.liquidity || {};
     const liq = { x: cx - 130, y: 18, w: 260, h: 64, kind: 'liq', title: L.label, sub: L.sub,
-      flow: L.flow_b, dir: L.dir, evidence: L.evidence || [] };
+      flow: L.flow_b, dir: L.dir, evidence: [...(L.evidence || []), ...(L.explain ? [`In simple words: ${L.explain}`] : [])] };
     nodes.push(liq);
 
     const ccy = data.currencies || [];
@@ -78,7 +78,7 @@ export default function MoneyFlow({ apiBase }) {
       const n = { x: cx - tot / 2 + i * (ccyW + gap), y: 120, w: ccyW, h: 56, kind: 'ccy',
         title: c.label, price: c.price, chg: c.chg_pct, state: c.state,
         evidence: [`${c.label} ${fmtP(c.price)} (${c.chg_pct >= 0 ? '+' : ''}${c.chg_pct}%) — ${c.state}`,
-          'Source: Yahoo Finance daily'] };
+          'Source: Binance live (spot)'] };
       nodes.push(n);
       edges.push({ from: liq, to: n, flow: L.dir === 'up' ? 1 : -1, mag: 1.5 });
     });
@@ -90,7 +90,8 @@ export default function MoneyFlow({ apiBase }) {
     classes.forEach((c, i) => {
       const n = { x: cx - cTot / 2 + i * (clsW + gap), y: clsY, w: clsW, h: clsH, kind: 'class',
         title: c.label, flow: c.flow_1d_b, flow5: c.flow_5d_b,
-        evidence: [`${c.label}: 1d ${fmtB(c.flow_1d_b)}, 5d ${fmtB(c.flow_5d_b)}`, c.evidence, data.caveat] };
+        evidence: [`${c.label}: 1d ${fmtB(c.flow_1d_b)}, 5d ${fmtB(c.flow_5d_b)}`, c.evidence,
+          ...(c.explain ? [`In simple words: ${c.explain}`] : []), data.caveat] };
       nodes.push(n);
       bus.forEach((b) => edges.push({ from: b, to: n, flow: c.flow_1d_b, mag: Math.abs(c.flow_1d_b), thin: true }));
       const kids = c.children || [];
@@ -232,7 +233,7 @@ export default function MoneyFlow({ apiBase }) {
     </section>
   );
   if (!data) return (
-    <section className="card mf-loading">Loading money flow… (first read pulls live Fed, Yahoo &amp; Binance data — up to ~15s)</section>
+    <section className="card mf-loading">Loading money flow… (first read pulls live Fed &amp; Binance data — up to ~15s)</section>
   );
 
   const L = data.liquidity || {};
@@ -255,14 +256,21 @@ export default function MoneyFlow({ apiBase }) {
           </div>
           <div className="mf-hs"><span className="k">NET FLOW · 24H</span>
             <span className={`v ${data.net_flow_b >= 0 ? 'in' : 'out'}`}>{fmtB(data.net_flow_b)}</span></div>
-          <div className="mf-hs"><span className="k">VIX</span>
-            <span className={`v ${data.vix > 20 ? 'out' : ''}`}>{data.vix}</span></div>
+          <div className="mf-hs"><span className="k">RISK IN · 24H</span>
+            <span className={`v ${data.risk_in_b >= 0 ? 'in' : 'out'}`}>{fmtB(data.risk_in_b)}</span></div>
           <div className="mf-hs regime"><span className="k">REGIME</span><span className="v">{data.regime}</span></div>
         </div>
         <button className="mf-refresh" onClick={() => load(true)} disabled={loading}>
           {loading ? '…' : '↻ Refresh'}
         </button>
       </div>
+
+      {data.student_summary && (
+        <div className="mf-student">
+          <span className="mf-student-tag">📘 STUDENT MODE</span>
+          <span className="mf-student-txt">{data.student_summary}</span>
+        </div>
+      )}
 
       {warns.length > 0 && (
         <section className="card mf-warns">
@@ -274,6 +282,7 @@ export default function MoneyFlow({ apiBase }) {
               <div className="w-body">
                 <div className="w-title">{w.title}</div>
                 <div className="w-detail">{w.detail}</div>
+                {w.explain && <div className="w-explain"><span className="w-eltag">IN SIMPLE WORDS</span>{w.explain}</div>}
               </div>
               <span className="w-lvl">{w.level.toUpperCase()}</span>
             </div>
