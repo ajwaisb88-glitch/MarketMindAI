@@ -4,9 +4,11 @@ import ManipulationRadar from './ManipulationRadar';
 import Watchlist from './Watchlist';
 import MoneyFlow from './MoneyFlow';
 import Signals from './Signals';
+import Performance from './Performance';
 
 const TABS = [
   { key: 'signals', label: '🚨 Signals' },
+  { key: 'performance', label: '📊 Performance' },
   { key: 'predict', label: '📈 Predict' },
   { key: 'moneyflow', label: '💧 Money Flow' },
   { key: 'watchlist', label: '📋 Watchlist' },
@@ -193,6 +195,7 @@ export default function App() {
         )}
         {/* ── Signals / Money Flow / Watchlist / Radar pages ── */}
         {tab === 'signals' && <Signals apiBase={apiBase} />}
+        {tab === 'performance' && <Performance apiBase={apiBase} />}
         {tab === 'moneyflow' && <MoneyFlow apiBase={apiBase} />}
         {tab === 'watchlist' && <Watchlist apiBase={apiBase} />}
         {tab === 'radar' && <ManipulationRadar apiBase={apiBase} />}

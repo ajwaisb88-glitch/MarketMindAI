@@ -602,7 +602,22 @@ async def signals_feed(asset: str = "gold", lots: float = 0.01):
     """Live signals for an asset from every active source. Auto-mode signals are
     routed to MT4/MT5 (queued until the terminal is connected); manual are shown."""
     from app.signal_sources import get_selector
-    return get_selector().feed(asset, lots=lots)
+    feed = get_selector().feed(asset, lots=lots)
+    # Log any actionable signals so the Performance page can grade them later.
+    try:
+        from app import signal_tracker
+        signal_tracker.record(feed.get("signals", {}), asset)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("signal tracking failed: %s", exc)
+    return feed
+
+
+@app.get("/signals/performance")
+async def signals_performance():
+    """Live-forward scoreboard: every logged signal graded TP / SL / open against
+    real prices. Empty until signals fire and resolve — honest, not simulated."""
+    from app import signal_tracker
+    return signal_tracker.stats()
 
 
 @app.get("/crypto/signals")
