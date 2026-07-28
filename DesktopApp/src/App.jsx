@@ -6,9 +6,11 @@ import MoneyFlow from './MoneyFlow';
 import Signals from './Signals';
 import Performance from './Performance';
 import NewsRadar from './NewsRadar';
+import Confluence from './Confluence';
 
 const TABS = [
   { key: 'signals', label: '🚨 Signals' },
+  { key: 'confluence', label: '👹 Confluence' },
   { key: 'performance', label: '📊 Performance' },
   { key: 'news', label: '📰 News' },
   { key: 'predict', label: '📈 Predict' },
@@ -197,6 +199,7 @@ export default function App() {
         )}
         {/* ── Signals / Money Flow / Watchlist / Radar pages ── */}
         {tab === 'signals' && <Signals apiBase={apiBase} />}
+        {tab === 'confluence' && <Confluence apiBase={apiBase} />}
         {tab === 'performance' && <Performance apiBase={apiBase} />}
         {tab === 'news' && <NewsRadar apiBase={apiBase} />}
         {tab === 'moneyflow' && <MoneyFlow apiBase={apiBase} />}

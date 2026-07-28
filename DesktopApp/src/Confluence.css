@@ -1,0 +1,78 @@
+/* Monster Confluence — the 100-point breakdown */
+.cf {
+  --cf-line: #1c2530; --cf-ink: #d6dde6; --cf-dim: #8b949e; --cf-bg: #0a0f16;
+  font-family: ui-monospace, "SF Mono", Consolas, Menlo, monospace;
+  font-variant-numeric: tabular-nums; color: var(--cf-ink);
+}
+.cf .up { color: #3fb950; }
+.cf .down { color: #ff7b72; }
+
+.cf-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 11px 16px; margin-bottom: 12px; border-radius: 12px;
+  border: 1px solid var(--cf-line); background: linear-gradient(180deg, #0e1620, #0a0f16);
+}
+.cf-brand { font-family: system-ui, sans-serif; font-weight: 600; letter-spacing: 2px; font-size: 14px; }
+.cf-brand b { color: #e3b341; font-weight: 800; margin-left: 4px; }
+.cf-brand span { margin-right: 8px; }
+.cf-pick { display: flex; align-items: center; gap: 8px; }
+.cf-pick label { font-size: 10px; letter-spacing: 1px; color: var(--cf-dim); text-transform: uppercase; }
+.cf-pick select { background: #0b1119; color: var(--cf-ink); border: 1px solid #30363d; border-radius: 7px; padding: 6px 10px; font: inherit; font-size: 13px; }
+.cf-modes { display: flex; gap: 5px; }
+.cf-mode { background: transparent; border: 1px solid #30363d; border-radius: 20px; color: var(--cf-dim);
+  padding: 5px 12px; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600; }
+.cf-mode:hover { color: var(--cf-ink); border-color: #4a5568; }
+.cf-mode.on { background: #e3b34122; color: #e3b341; border-color: #e3b34177; }
+.cf-refresh { margin-left: auto; background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 7px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 13px; }
+.cf-refresh:hover:not(:disabled) { border-color: #e3b341; color: #e3b341; }
+.cf-err { padding: 12px 14px; border-radius: 9px; background: #160809; border: 1px solid #ff4d4d44; color: #ff9b95; margin-bottom: 12px; }
+
+.cf-hero {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 18px 20px; margin-bottom: 12px; border-radius: 12px;
+  border: 1px solid var(--cf-line); border-left: 4px solid var(--side);
+  background: linear-gradient(90deg, #0d1520, #0a0f16 70%);
+}
+.cf-side { font-family: system-ui, sans-serif; font-weight: 800; font-size: 24px; letter-spacing: .5px; }
+.cf-tier { font-size: 12px; color: var(--cf-ink); margin: 3px 0; }
+.cf-reason { font-family: system-ui, sans-serif; font-size: 12px; color: var(--cf-dim); max-width: 620px; }
+.cf-hero-r { display: flex; align-items: center; gap: 14px; }
+.cf-score { font-size: 44px; font-weight: 800; line-height: 1; }
+.cf-score span { font-size: 16px; color: var(--cf-dim); font-weight: 600; }
+.cf-grade { font-size: 22px; font-weight: 800; border: 2px solid; border-radius: 10px; padding: 6px 12px; }
+
+.cf-vs { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 16px; margin-bottom: 12px;
+  border: 1px solid var(--cf-line); border-radius: 12px; background: var(--cf-bg); }
+.cf-vs-side { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 240px; }
+.cf-vs-side .l { font-size: 11px; font-weight: 700; width: 34px; color: var(--cf-dim); }
+.cf-vs-side .v { font-size: 15px; font-weight: 700; width: 30px; }
+.cf-vs-bar { flex: 1; height: 12px; background: #11161d; border-radius: 8px; overflow: hidden; }
+.cf-vs-bar .fill { height: 100%; border-radius: 8px; }
+.cf-vs-bar .fill.buy { background: linear-gradient(90deg, #0f9a58, #3fb950); }
+.cf-vs-bar .fill.sell { background: linear-gradient(90deg, #b33, #ff7b72); }
+.cf-margin { font-size: 11px; color: var(--cf-dim); letter-spacing: 1px; }
+
+.cf-factors-card { border: 1px solid var(--cf-line); border-radius: 12px; padding: 16px; background: var(--cf-bg); margin-bottom: 12px; }
+.cf-ph { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--cf-line); padding-bottom: 9px; margin-bottom: 12px; }
+.cf-ph .pt { font-family: system-ui, sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 2px; color: #e3b341; }
+.cf-ph .psub { font-size: 9px; color: #5b6675; letter-spacing: 1px; text-transform: uppercase; }
+.cf-factor { margin-bottom: 13px; }
+.cf-factor:last-child { margin-bottom: 0; }
+.cf-factor-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+.cf-fname { font-family: system-ui, sans-serif; font-size: 13px; font-weight: 600; }
+.cf-fpts { font-size: 14px; font-weight: 700; }
+.cf-fpts .dim { color: var(--cf-dim); font-weight: 400; }
+.cf-fbar { height: 8px; background: #11161d; border-radius: 6px; overflow: hidden; }
+.cf-ffill { height: 100%; border-radius: 6px; transition: width .4s; }
+.cf-fdet { font-family: system-ui, sans-serif; font-size: 11px; color: var(--cf-dim); margin-top: 4px; line-height: 1.45; }
+
+.cf-ctx { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+@media (max-width: 900px) { .cf-ctx { grid-template-columns: 1fr 1fr; } }
+.cf-ctx-card { border: 1px solid var(--cf-line); border-radius: 10px; padding: 12px; background: #0b1119; }
+.cf-ctx-k { font-size: 9px; letter-spacing: 1px; color: var(--cf-dim); text-transform: uppercase; }
+.cf-ctx-v { font-family: system-ui, sans-serif; font-weight: 700; font-size: 14px; margin: 5px 0 3px; }
+.cf-ctx-v b { font-weight: 800; }
+.cf-ctx-sub { font-family: system-ui, sans-serif; font-size: 10.5px; color: var(--cf-dim); line-height: 1.4; }
+
+.cf-foot { font-family: system-ui, sans-serif; font-size: 11px; color: #5b6675; line-height: 1.5; }

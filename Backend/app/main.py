@@ -628,6 +628,32 @@ async def news_radar(days: int = 21):
     return news_radar.get_news(days=days)
 
 
+@app.get("/monster/confluence")
+async def monster_confluence(asset: str = "gold", mode: str = "SWING"):
+    """Monster's full 100-point confluence breakdown for an asset: the five factors
+    (HTF 25 · Better-Volume retest 25 · Session 19 · Agent pressure 19 · Quick 12),
+    the winning side's score, tier and the higher-timeframe / session / BV context."""
+    from app.monster.confluence import ConfluenceEngine, set_bars_provider
+    from app.signal_sources import _grade_from_score, _monster_bars
+
+    set_bars_provider(_monster_bars)
+    r = ConfluenceEngine().analyze(mode=mode, symbol=asset)
+    if r.get("status") != "ok":
+        return {"status": "error", "asset": asset, "mode": mode,
+                "message": r.get("message", "no data for this asset")}
+    sc = r.get("score", {})
+    best = max(sc.get("buy", 0) or 0, sc.get("sell", 0) or 0)
+    winner = (sc.get("winner") or "BUY").lower()
+    return {
+        "status": "ok", "asset": asset, "mode": mode, "mode_label": r.get("mode_label"),
+        "side": r.get("side"), "tier": r.get("tier"), "grade": _grade_from_score(best),
+        "score": sc, "reason": r.get("reason"), "winner": winner.upper(),
+        "factors": r.get("factors", {}).get(winner, []),
+        "htf": r.get("htf"), "session": r.get("session"),
+        "bv_trigger": r.get("bv_trigger"), "agent_pressure": r.get("agent_pressure"),
+    }
+
+
 @app.get("/crypto/signals")
 async def crypto_signals(asset: str = "btc", scalp: bool = True):
     """Live crypto signals from Binance (key-free): the three SEPARATE types —
