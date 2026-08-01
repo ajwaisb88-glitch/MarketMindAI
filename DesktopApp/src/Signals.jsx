@@ -124,6 +124,14 @@ export default function Signals({ apiBase }) {
                 )}
               </div>
 
+              {s.window && (
+                <div className="sg-ctx">
+                  <span className="sg-ctx-chip time">🕐 {s.window}</span>
+                  {s.bv_color && <span className={`sg-ctx-chip bv ${String(s.bv_color).toLowerCase()}`}>BV {s.bv_color}</span>}
+                  {s.behavior && <span className="sg-ctx-chip beh">{s.behavior}</span>}
+                </div>
+              )}
+
               <div className="sg-modes">
                 {MODES.map((mo) => (
                   <button key={mo}

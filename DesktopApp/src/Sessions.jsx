@@ -20,10 +20,14 @@ function countdown(whenUtc) {
   return `${m}m ${s % 60}s`;
 }
 
+const pfColor = (pf) => (pf == null ? '#8b949e' : pf >= 1.3 ? '#3fb950' : pf >= 1 ? '#e3b341' : '#ff7b72');
+
 export default function Sessions({ apiBase }) {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [clock, setClock] = useState(dubaiNow());
+  const [bt, setBt] = useState(null);
+  const [btLoading, setBtLoading] = useState(false);
   const [, tick] = useState(0);
   const t = useRef(0);
 
@@ -36,7 +40,18 @@ export default function Sessions({ apiBase }) {
     } catch (e) { setErr(String(e.message || e)); }
   }, [apiBase]);
 
+  const loadBacktest = useCallback(async () => {
+    setBtLoading(true);
+    try {
+      const r = await fetch(`${apiBase}/backtest/itbv?asset=gold`);
+      const d = await r.json();
+      setBt(d.status === 'ok' ? d : null);
+    } catch (e) { /* ignore */ }
+    setBtLoading(false);
+  }, [apiBase]);
+
   useEffect(() => { load(); const iv = setInterval(load, 60000); return () => clearInterval(iv); }, [load]);
+  useEffect(() => { loadBacktest(); }, [loadBacktest]);
   useEffect(() => {
     t.current = setInterval(() => { setClock(dubaiNow()); tick((n) => n + 1); }, 1000);
     return () => clearInterval(t.current);
@@ -112,6 +127,44 @@ export default function Sessions({ apiBase }) {
                 </tbody>
               </table>
             </div>
+          </section>
+
+          <section className="ss-bt-card">
+            <div className="ss-ph"><span className="pt">🧪 GOLD STRATEGY BACKTEST — Time × BetterVolume</span>
+              <span className="psub">{bt ? `${bt.bars} × 15m bars · ~${bt.days}d` : ''}
+                <button className="ss-bt-refresh" onClick={loadBacktest} disabled={btLoading}>{btLoading ? '…' : '↻'}</button></span></div>
+            {!bt ? <div className="ss-bt-empty">{btLoading ? 'Running backtest…' : 'Backtest unavailable.'}</div> : (
+              <>
+                <div className="ss-bt-tiles">
+                  <div className="ss-tile"><span className="k">Trades</span><span className="v">{bt.overall.trades}</span></div>
+                  <div className="ss-tile"><span className="k">Win rate</span><span className="v" style={{ color: (bt.overall.win_rate || 0) >= 50 ? '#3fb950' : '#e3b341' }}>{bt.overall.win_rate ?? '—'}%</span></div>
+                  <div className="ss-tile"><span className="k">Profit factor</span><span className="v" style={{ color: pfColor(bt.overall.profit_factor) }}>{bt.overall.profit_factor ?? '—'}</span></div>
+                  <div className="ss-tile"><span className="k">Net</span><span className="v" style={{ color: bt.overall.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{bt.overall.net_r > 0 ? '+' : ''}{bt.overall.net_r}R</span></div>
+                  <div className="ss-tile"><span className="k">Max DD</span><span className="v" style={{ color: '#ff9b95' }}>-{bt.max_drawdown_r}R</span></div>
+                </div>
+                <div className="ss-bt-cols">
+                  <div className="ss-bt-break">
+                    <div className="ss-bt-k">BY SESSION</div>
+                    {Object.entries(bt.by_session).map(([k, v]) => (
+                      <div key={k} className="ss-bt-row"><span className="n">{k}</span>
+                        <span className="s">n{v.trades}</span><span className="s">{v.win_rate ?? '—'}%</span>
+                        <span className="s" style={{ color: pfColor(v.profit_factor) }}>PF {v.profit_factor ?? '—'}</span>
+                        <span className="s" style={{ color: v.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{v.net_r > 0 ? '+' : ''}{v.net_r}R</span></div>
+                    ))}
+                  </div>
+                  <div className="ss-bt-break">
+                    <div className="ss-bt-k">BY BETTERVOLUME</div>
+                    {Object.entries(bt.by_color).map(([k, v]) => (
+                      <div key={k} className="ss-bt-row"><span className="n">{k}</span>
+                        <span className="s">n{v.trades}</span><span className="s">{v.win_rate ?? '—'}%</span>
+                        <span className="s" style={{ color: pfColor(v.profit_factor) }}>PF {v.profit_factor ?? '—'}</span>
+                        <span className="s" style={{ color: v.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{v.net_r > 0 ? '+' : ''}{v.net_r}R</span></div>
+                    ))}
+                  </div>
+                </div>
+                <div className="ss-bt-note">{bt.note}</div>
+              </>
+            )}
           </section>
 
           <div className="ss-foot">

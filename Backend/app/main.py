@@ -637,6 +637,15 @@ async def sessions_timing():
     return sessions.get_sessions()
 
 
+@app.get("/backtest/itbv")
+async def backtest_itbv(asset: str = "gold", limit: int = 1000):
+    """Backtest the Institutional Time × BetterVolume gold strategy on 15m bars:
+    win rate, profit factor, avg/net R, max drawdown — broken down by session and
+    by BetterVolume colour."""
+    from app import itbv_backtest
+    return itbv_backtest.run(asset=asset, limit=limit)
+
+
 @app.get("/monster/confluence")
 async def monster_confluence(asset: str = "gold", mode: str = "SWING"):
     """Monster's full 100-point confluence breakdown for an asset: the five factors

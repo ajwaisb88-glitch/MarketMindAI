@@ -89,10 +89,13 @@ class SignalSource:
         raise NotImplementedError
 
 
+_GOLD_ASSETS = {"gold", "xauusd", "xauusdt", "paxg", "silver", "xagusd"}
+
+
 class MarketMindSource(SignalSource):
     key, name = "marketmind", "MarketMind"
-    description = "Crypto — 15m→4h multi-timeframe confluence (Binance)"
-    engine = "15m·1h·4h confluence"
+    description = "Gold: Institutional Time × BetterVolume · Crypto: 15m→4h confluence"
+    engine = "Time × BetterVolume (gold) / 15m·1h·4h (crypto)"
 
     # Minimum 15-minute base up to higher timeframes — NO sub-15m scalp. This is
     # what stops the signal from flipping every second: it only fires when 15m,
@@ -100,6 +103,32 @@ class MarketMindSource(SignalSource):
     _TFS = ("15m", "1h", "4h")
 
     def get(self, asset: str) -> Optional[dict]:
+        if asset.lower() in _GOLD_ASSETS:
+            return self._itbv(asset)
+        return self._crypto_confluence(asset)
+
+    def _itbv(self, asset: str) -> dict:
+        """Gold brain: institutional TIME decides WHEN, BetterVolume decides WHAT.
+        Only trades inside a tradeable institutional window with a BV footprint."""
+        import numpy as np
+
+        from . import itbv
+        bars = _monster_bars("M15", asset)          # MT5 tick-volume for gold, else Binance PAXG
+        r = itbv.signal_for(asset, bars)
+        out = {"source": self.key, "engine": "Time × BetterVolume", "asset": asset,
+               "direction": r["direction"], "grade": r["grade"],
+               "window": r.get("window_label"), "behavior": r.get("behavior"),
+               "bv_color": r.get("bv_color"), "liquidity": r.get("liquidity"),
+               "timeframe": "M15", "story": r.get("reason"),
+               "entry": None, "stop_loss": None, "take_profit": None, "risk_reward": None}
+        if r["direction"] in ("BUY", "SELL") and bars:
+            closes = np.array([b["c"] for b in bars], float)
+            highs = np.array([b["h"] for b in bars], float)
+            lows = np.array([b["l"] for b in bars], float)
+            out.update(_atr_plan(r["direction"], float(closes[-1]), strat.atr(highs, lows, closes)))
+        return out
+
+    def _crypto_confluence(self, asset: str) -> Optional[dict]:
         from .strategies import intraday_signal
         from .crypto_signals import CryptoSignalService
         svc = CryptoSignalService()

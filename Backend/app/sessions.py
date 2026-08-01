@@ -99,6 +99,69 @@ def _slab(center_iso, before=10, after=5):
     return {"start": s.astimezone(DUBAI).strftime("%H:%M"), "end": e.astimezone(DUBAI).strftime("%H:%M")}
 
 
+# ── institutional-window classifier (the "WHEN" half of Time × BetterVolume) ──
+# Each window: liquidity + the PDF's expected behaviour + whether it's tradeable.
+# Behaviour: REVERSAL (sweep+reclaim), CONTINUATION (ride the move), FADE (fix
+# reverts), SHOCK (data — usually stand aside), AVOID (thin/prep only).
+WINDOWS = {
+    "LONDON_OPEN":  {"label": "London Open (judas)", "liquidity": "HIGH", "behavior": "REVERSAL",
+                     "tradeable": True, "note": "First 90m — sweep the Asian range then reverse."},
+    "NY_OVERLAP":   {"label": "London–NY Overlap", "liquidity": "HIGH", "behavior": "CONTINUATION",
+                     "tradeable": True, "note": "Highest liquidity, cleanest fills — ride the London direction."},
+    "DATA_SHOCK":   {"label": "US 08:30 data window", "liquidity": "HIGH", "behavior": "SHOCK",
+                     "tradeable": False, "note": "Data spike whipsaws — stand aside, trade the 2nd move."},
+    "WMR_FIX":      {"label": "WMR 4pm fix", "liquidity": "HIGH", "behavior": "FADE",
+                     "tradeable": True, "note": "Forced flow drags price then reverts — fade after the window."},
+    "COMEX_SETTLE": {"label": "COMEX gold settlement", "liquidity": "MED", "behavior": "FADE",
+                     "tradeable": True, "note": "Obligation-driven pulse that reverts — mark, trade the reaction."},
+    "GOLD_FIX":     {"label": "LBMA gold fix", "liquidity": "MED", "behavior": "FADE",
+                     "tradeable": True, "note": "Scheduled gold auction — often reverts."},
+    "LONDON":       {"label": "London session", "liquidity": "MED", "behavior": "CONTINUATION",
+                     "tradeable": True, "note": "Trend continuation with BetterVolume confirmation."},
+    "ASIA":         {"label": "Asia (range-build)", "liquidity": "LOW", "behavior": "AVOID",
+                     "tradeable": False, "note": "Thin — builds the range London raids. Prepare, don't trade."},
+    "DEAD":         {"label": "Low-liquidity hours", "liquidity": "LOW", "behavior": "AVOID",
+                     "tradeable": False, "note": "Tokyo lunch / post-fix drift / deep US afternoon — thin."},
+    "OFF":          {"label": "Weekend — closed", "liquidity": "LOW", "behavior": "AVOID",
+                     "tradeable": False, "note": "Market closed."},
+}
+
+
+def _window_key(now):
+    """Classify the current institutional window using each market's own clock
+    (so summer/winter DST is automatic). Most-specific windows win."""
+    dub = now.astimezone(DUBAI)
+    if dub.weekday() > 4 and not (dub.weekday() == 6 and dub.hour >= 2):
+        return "OFF"
+    lon, ny, tok = now.astimezone(_LON), now.astimezone(_NY), now.astimezone(_TOK)
+    lm, nm, tm = lon.hour * 60 + lon.minute, ny.hour * 60 + ny.minute, tok.hour * 60 + tok.minute
+    if abs(nm - (8 * 60 + 30)) <= 8:                      # 08:30 ET data ±8m
+        return "DATA_SHOCK"
+    if (13 * 60 + 25) <= nm <= (13 * 60 + 35):            # COMEX gold settle 13:29–13:30 ET
+        return "COMEX_SETTLE"
+    if abs(lm - 16 * 60) <= 6:                            # WMR 4pm fix ±6m
+        return "WMR_FIX"
+    if abs(lm - (10 * 60 + 30)) <= 7 or abs(lm - 15 * 60) <= 7:   # LBMA AM 10:30 / PM 15:00
+        return "GOLD_FIX"
+    if lon.weekday() <= 4 and (8 * 60) <= lm < (9 * 60 + 30):     # London open first 90m
+        return "LONDON_OPEN"
+    if ny.weekday() <= 4 and (9 * 60 + 30) <= nm < (11 * 60):     # NY open first 90m (overlap)
+        return "NY_OVERLAP"
+    if lon.weekday() <= 4 and (8 * 60) <= lm < (17 * 60):         # rest of London
+        return "LONDON"
+    if tok.weekday() <= 4 and (9 * 60) <= tm < (15 * 60):         # Tokyo cash
+        if (11 * 60 + 30) <= tm < (12 * 60 + 30):                 # Tokyo lunch trough
+            return "DEAD"
+        return "ASIA"
+    return "DEAD"
+
+
+def current_window(now=None) -> dict:
+    now = now or datetime.now(timezone.utc)
+    key = _window_key(now)
+    return {"window": key, **WINDOWS[key]}
+
+
 def get_sessions() -> dict:
     now = datetime.now(timezone.utc).astimezone(DUBAI)
     today = now.date()
