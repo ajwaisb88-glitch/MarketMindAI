@@ -628,6 +628,15 @@ async def news_radar(days: int = 21):
     return news_radar.get_news(days=days)
 
 
+@app.get("/sessions")
+async def sessions_timing():
+    """Session / volume-timing map in Dubai time (UTC+4): current session, the
+    next scheduled FIX event (and the next gold fix), today's full schedule and
+    gold slab windows. DST-correct via per-market timezones."""
+    from app import sessions
+    return sessions.get_sessions()
+
+
 @app.get("/monster/confluence")
 async def monster_confluence(asset: str = "gold", mode: str = "SWING"):
     """Monster's full 100-point confluence breakdown for an asset: the five factors
