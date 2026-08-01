@@ -33,9 +33,31 @@ def _atr(h, l, c, i, period=14):
     return float(tr.mean()) if len(tr) else 0.0
 
 
-def run(asset: str = "gold", limit: int = 1000) -> dict:
+def _fetch_bars(bc: BinanceConnector, asset: str, interval: str, total: int) -> list[dict]:
+    """Binance klines with endTime paging so we can backtest on more than the
+    1000-bar single-call cap (older batches prepended)."""
+    sym = bc.resolve(asset)
+    out: list[dict] = []
+    end = None
+    while len(out) < total:
+        params = {"symbol": sym, "interval": interval, "limit": 1000}
+        if end is not None:
+            params["endTime"] = end
+        data = bc._get("/api/v3/klines", params)
+        if not isinstance(data, list) or not data:
+            break
+        batch = [{"t": int(x[0]), "open": float(x[1]), "high": float(x[2]),
+                  "low": float(x[3]), "close": float(x[4]), "volume": float(x[5])} for x in data]
+        out = batch + out
+        end = batch[0]["t"] - 1
+        if len(batch) < 1000:
+            break
+    return out[-total:]
+
+
+def run(asset: str = "gold", limit: int = 4000) -> dict:
     bc = BinanceConnector()
-    k = bc.klines(asset, "15m", min(limit, 1000))
+    k = _fetch_bars(bc, asset, "15m", min(limit, 6000))
     if not k or len(k) < _WARMUP + 20:
         return {"status": "error", "message": "not enough history", "asset": asset}
     t = [int(b["t"]) for b in k]

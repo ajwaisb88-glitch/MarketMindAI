@@ -24,63 +24,47 @@ from .better_volume import BVResult
 
 _WAIT = {"action": "WAIT", "direction": "NONE", "grade": "-"}
 
-
-def _reversal(bv: BVResult) -> dict:
-    """Sweep-and-reclaim windows: fade exhaustion, trade absorption on the turn."""
-    c = bv.color
-    if c == "Red":        # climax up → fade the sweep high
-        return {"action": "SELL READY", "direction": "SELL", "grade": "A1"}
-    if c == "White":      # climax down → fade the sweep low
-        return {"action": "BUY READY", "direction": "BUY", "grade": "A1"}
-    if c == "Magenta":    # major fight at the extreme → reversal side
-        return {"action": ("BUY READY" if bv.direction == "BUY" else "SELL READY"),
-                "direction": bv.direction, "grade": "A+"}
-    if c == "Green":      # absorption → go with the reclaim
-        return {"action": ("BUY" if bv.direction == "BUY" else "SELL"),
-                "direction": bv.direction, "grade": "A1"}
-    return _WAIT           # Yellow / Neutral
-
-
-def _continuation(bv: BVResult) -> dict:
-    """Overlap / trend windows: ride the move with volume behind it."""
-    c = bv.color
-    if c == "Green":      # churn/absorption with the close → strongest continuation
-        return {"action": ("BUY" if bv.direction == "BUY" else "SELL"),
-                "direction": bv.direction, "grade": "A+"}
-    if c == "Magenta":
-        return {"action": ("BUY" if bv.direction == "BUY" else "SELL"),
-                "direction": bv.direction, "grade": "A+"}
-    if c in ("Red", "White"):   # climax in a trend window = continuation unless rejected
-        return {"action": ("BUY" if bv.direction == "BUY" else "SELL" if bv.direction == "SELL" else "WAIT"),
-                "direction": bv.direction, "grade": "A"}
-    return _WAIT
+# Colours that actually pay in the walk-forward backtest (v1.1 pruning):
+#   * White  — climax-down / stopping volume → the strongest reversal (BUY). Best PF.
+#   * Green  — churn / absorption → go with the close (either side).
+# Red (climax-up) and Magenta (climax-churn) LOST money across both the 10-day and
+# 42-day samples, so they are demoted to context only — never an entry. Per the
+# project rule: if the backtest doesn't support a rule, it doesn't trade.
+_TRIGGER_COLORS = ("White", "Green")
 
 
 def decide(window: dict, bv: BVResult) -> dict:
-    """Fuse the institutional window and the BetterVolume state into one action."""
+    """Fuse the institutional window and the BetterVolume state into one action.
+
+    Only White (stopping volume → bounce) and Green (absorption → with the close)
+    fire, and only inside a tradeable institutional window. Everything else waits.
+    """
     behavior = window.get("behavior")
     base = {"window": window.get("window"), "window_label": window.get("label"),
             "liquidity": window.get("liquidity"), "behavior": behavior,
             "bv_color": bv.color, "bv_story": bv.story, "volume_ratio": bv.volume_ratio}
 
     if not window.get("tradeable"):
-        # AVOID (Asia/dead/weekend) or SHOCK (data spike) → never enter.
         reason = ("Data-shock window — stand aside; trade the second move once it settles."
                   if behavior == "SHOCK" else
                   f"{window.get('label')} — low-liquidity / non-institutional. No trade.")
         return {**base, **_WAIT, "reason": reason}
 
-    if bv.color in ("Yellow", "Neutral"):
-        return {**base, **_WAIT,
-                "reason": f"{window.get('label')} is live, but volume is {bv.color.lower()} — "
-                          "no institutional footprint yet. Wait for a BetterVolume signal."}
+    if bv.color not in _TRIGGER_COLORS:
+        why = ("low-volume — no institutional footprint" if bv.color in ("Yellow", "Neutral")
+               else f"{bv.color} climax — backtest shows no edge here; context only")
+        return {**base, **_WAIT, "reason": f"{window.get('label')} is live, but {why}. Waiting."}
 
-    d = _reversal(bv) if behavior in ("REVERSAL", "FADE") else _continuation(bv)
-    if d["direction"] == "NONE":
-        return {**base, **_WAIT, "reason": f"{window.get('label')}: {bv.color} gives no clean side yet."}
+    if bv.color == "White":            # stopping volume → high-conviction bounce (top PF)
+        d = {"action": "BUY READY", "direction": "BUY", "grade": "A1"}
+        verb = "stopping-volume bounce"
+    else:                              # Green absorption → go with the close
+        if bv.direction not in ("BUY", "SELL"):
+            return {**base, **_WAIT, "reason": f"{window.get('label')}: Green gives no clean side yet."}
+        d = {"action": bv.direction, "direction": bv.direction, "grade": "A"}
+        verb = "absorption, go with the close"
 
-    verb = "fade the sweep" if behavior in ("REVERSAL", "FADE") else "ride the move"
-    reason = (f"{window.get('label')} × {bv.color}: {verb} → {d['direction']}. {bv.story}")
+    reason = f"{window.get('label')} × {bv.color}: {verb} → {d['direction']}. {bv.story}"
     return {**base, **d, "reason": reason}
 
 
