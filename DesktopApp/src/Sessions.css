@@ -68,6 +68,10 @@
 .ss-empty { text-align: center; color: var(--ss-dim); padding: 22px; }
 
 .ss-bt-card { border: 1px solid var(--ss-line); border-radius: 12px; padding: 16px; background: var(--ss-bg); margin-top: 12px; }
+.ss-robust { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 9px 13px; margin-bottom: 12px;
+  border: 1px solid; border-radius: 9px; background: #0b1119; font-family: system-ui, sans-serif; font-size: 12px; color: var(--ss-dim); }
+.ss-robust .rb { font-weight: 800; letter-spacing: .5px; }
+.ss-robust .bh { margin-left: auto; font-size: 11px; }
 .ss-bt-refresh { margin-left: 8px; background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 2px 8px; cursor: pointer; font: inherit; font-size: 11px; }
 .ss-bt-empty { color: var(--ss-dim); font-family: system-ui, sans-serif; font-size: 12px; padding: 14px 0; }
 .ss-bt-tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 12px; }

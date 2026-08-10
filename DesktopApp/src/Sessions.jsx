@@ -43,7 +43,7 @@ export default function Sessions({ apiBase }) {
   const loadBacktest = useCallback(async () => {
     setBtLoading(true);
     try {
-      const r = await fetch(`${apiBase}/backtest/itbv?asset=gold`);
+      const r = await fetch(`${apiBase}/backtest/breakout?asset=gold&tf=1h`);
       const d = await r.json();
       setBt(d.status === 'ok' ? d : null);
     } catch (e) { /* ignore */ }
@@ -130,21 +130,38 @@ export default function Sessions({ apiBase }) {
           </section>
 
           <section className="ss-bt-card">
-            <div className="ss-ph"><span className="pt">🧪 GOLD STRATEGY BACKTEST — Time × BetterVolume</span>
-              <span className="psub">{bt ? `${bt.bars} × 15m bars · ~${bt.days}d` : ''}
+            <div className="ss-ph"><span className="pt">🧪 GOLD STRATEGY BACKTEST — Donchian breakout</span>
+              <span className="psub">{bt ? `${bt.bars} × ${bt.timeframe} bars · ~${bt.days}d · gold` : ''}
                 <button className="ss-bt-refresh" onClick={loadBacktest} disabled={btLoading}>{btLoading ? '…' : '↻'}</button></span></div>
             {!bt ? <div className="ss-bt-empty">{btLoading ? 'Running backtest…' : 'Backtest unavailable.'}</div> : (
               <>
-                <div className="ss-bt-tiles">
-                  <div className="ss-tile"><span className="k">Trades</span><span className="v">{bt.overall.trades}</span></div>
-                  <div className="ss-tile"><span className="k">Win rate</span><span className="v" style={{ color: (bt.overall.win_rate || 0) >= 50 ? '#3fb950' : '#e3b341' }}>{bt.overall.win_rate ?? '—'}%</span></div>
-                  <div className="ss-tile"><span className="k">Profit factor</span><span className="v" style={{ color: pfColor(bt.overall.profit_factor) }}>{bt.overall.profit_factor ?? '—'}</span></div>
-                  <div className="ss-tile"><span className="k">Net (risk units)</span><span className="v" style={{ color: bt.overall.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{bt.overall.net_r > 0 ? '+' : ''}{bt.overall.net_r}R</span></div>
-                  <div className="ss-tile"><span className="k">Max DD</span><span className="v" style={{ color: '#ff9b95' }}>-{bt.max_drawdown_r}R</span></div>
+                {typeof bt.robust === 'boolean' && (
+                  <div className="ss-robust" style={{ borderColor: bt.robust ? '#3fb95055' : '#e3b34155' }}>
+                    <span className="rb" style={{ color: bt.robust ? '#3fb950' : '#e3b341' }}>
+                      {bt.robust ? '✓ ROBUST' : '△ MARGINAL'}</span>
+                    <span>profitable in BOTH the in-sample and out-of-sample periods</span>
+                    <span className="bh">gold buy&amp;hold over period: {bt.buy_hold_pct}%</span>
+                  </div>
+                )}
+                <div className="ss-bt-cols">
+                  <div className="ss-bt-break">
+                    <div className="ss-bt-k">IN-SAMPLE (first 70% — where rules were chosen)</div>
+                    <div className="ss-bt-row"><span className="n">Profit factor</span><span className="s" style={{ color: pfColor(bt.in_sample.profit_factor) }}>PF {bt.in_sample.profit_factor ?? '—'}</span>
+                      <span className="s">win {bt.in_sample.win_rate ?? '—'}%</span>
+                      <span className="s" style={{ color: bt.in_sample.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{bt.in_sample.net_r > 0 ? '+' : ''}{bt.in_sample.net_r}R</span>
+                      <span className="s">n{bt.in_sample.trades}</span></div>
+                  </div>
+                  <div className="ss-bt-break">
+                    <div className="ss-bt-k">OUT-OF-SAMPLE (last 30% — the honest test)</div>
+                    <div className="ss-bt-row"><span className="n">Profit factor</span><span className="s" style={{ color: pfColor(bt.out_of_sample.profit_factor) }}>PF {bt.out_of_sample.profit_factor ?? '—'}</span>
+                      <span className="s">win {bt.out_of_sample.win_rate ?? '—'}%</span>
+                      <span className="s" style={{ color: bt.out_of_sample.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{bt.out_of_sample.net_r > 0 ? '+' : ''}{bt.out_of_sample.net_r}R</span>
+                      <span className="s">n{bt.out_of_sample.trades}</span></div>
+                  </div>
                 </div>
                 {bt.money && (
                   <div className="ss-money">
-                    <span className="ss-money-lead">${bt.money.start_balance.toLocaleString()} · risk {bt.money.risk_pct}%/trade →</span>
+                    <span className="ss-money-lead">${bt.money.start_balance.toLocaleString()} · risk {bt.money.risk_pct}%/trade (whole period) →</span>
                     <span className="ss-money-item"><span className="k">Return</span>
                       <b style={{ color: bt.money.return_pct >= 0 ? '#3fb950' : '#ff7b72' }}>{bt.money.return_pct >= 0 ? '+' : ''}{bt.money.return_pct}%</b></span>
                     <span className="ss-money-item"><span className="k">Net profit</span>
@@ -153,28 +170,8 @@ export default function Sessions({ apiBase }) {
                     <span className="ss-money-item"><span className="k">Max DD</span><b style={{ color: '#ff9b95' }}>-{bt.money.max_drawdown_pct}%</b></span>
                   </div>
                 )}
-                <div className="ss-money-note">Return = % gain on capital · Profit = the dollars. Backtest runs on live rolling history, so numbers move as new bars print — the edge is thin, treat it as research not a promise.</div>
-                <div className="ss-bt-cols">
-                  <div className="ss-bt-break">
-                    <div className="ss-bt-k">BY SESSION</div>
-                    {Object.entries(bt.by_session).map(([k, v]) => (
-                      <div key={k} className="ss-bt-row"><span className="n">{k}</span>
-                        <span className="s">n{v.trades}</span><span className="s">{v.win_rate ?? '—'}%</span>
-                        <span className="s" style={{ color: pfColor(v.profit_factor) }}>PF {v.profit_factor ?? '—'}</span>
-                        <span className="s" style={{ color: v.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{v.net_r > 0 ? '+' : ''}{v.net_r}R</span></div>
-                    ))}
-                  </div>
-                  <div className="ss-bt-break">
-                    <div className="ss-bt-k">BY BETTERVOLUME</div>
-                    {Object.entries(bt.by_color).map(([k, v]) => (
-                      <div key={k} className="ss-bt-row"><span className="n">{k}</span>
-                        <span className="s">n{v.trades}</span><span className="s">{v.win_rate ?? '—'}%</span>
-                        <span className="s" style={{ color: pfColor(v.profit_factor) }}>PF {v.profit_factor ?? '—'}</span>
-                        <span className="s" style={{ color: v.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{v.net_r > 0 ? '+' : ''}{v.net_r}R</span></div>
-                    ))}
-                  </div>
-                </div>
-                <div className="ss-bt-note">{bt.note}</div>
+                <div className="ss-bt-note">{bt.note} Lookback {bt.params?.lookback}, {bt.params?.k_stop}×ATR stop.
+                  Backtest runs on live rolling history so numbers shift as new bars print — still research, not a promise; prove it on demo.</div>
               </>
             )}
           </section>

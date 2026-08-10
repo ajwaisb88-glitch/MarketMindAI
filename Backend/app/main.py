@@ -679,6 +679,15 @@ async def market_read_endpoint(asset: str = "gold"):
     return market_read.read(asset)
 
 
+@app.get("/backtest/breakout")
+async def backtest_breakout(asset: str = "gold", tf: str = "1h",
+                            balance: float = 10000.0, risk_pct: float = 1.0):
+    """Backtest the Donchian breakout engine with an honest in-sample / out-of-
+    sample split: PF, net R, win, plus the money view (return % / profit $)."""
+    from app import breakout
+    return breakout.backtest(asset=asset, tf=tf, balance=balance, risk_pct=risk_pct)
+
+
 @app.get("/backtest/itbv")
 async def backtest_itbv(asset: str = "gold", limit: int = 4000,
                         balance: float = 10000.0, risk_pct: float = 1.0):

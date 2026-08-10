@@ -94,8 +94,8 @@ _GOLD_ASSETS = {"gold", "xauusd", "xauusdt", "paxg", "silver", "xagusd"}
 
 class MarketMindSource(SignalSource):
     key, name = "marketmind", "MarketMind"
-    description = "Gold: Market Read (flow+DOM+BV×time) · Crypto: daily swing (SMA-trend + 4h)"
-    engine = "Market Read (gold) / Swing (crypto)"
+    description = "Donchian breakout — momentum (validated out-of-sample). Gold 1h·4h · Crypto 4h·1d"
+    engine = "Donchian 20-bar breakout"
 
     # Minimum 15-minute base up to higher timeframes — NO sub-15m scalp. This is
     # what stops the signal from flipping every second: it only fires when 15m,
@@ -103,9 +103,12 @@ class MarketMindSource(SignalSource):
     _TFS = ("15m", "1h", "4h")
 
     def get(self, asset: str) -> Optional[dict]:
+        # Donchian breakout everywhere — the only logic that held out-of-sample.
+        # Gold/FX/metals on 1h (4h trend); crypto swings slower on 4h (1d trend).
+        from . import breakout
         if asset.lower() in _GOLD_ASSETS:
-            return self._itbv(asset)
-        return self._crypto_confluence(asset)
+            return breakout.signal(asset, tf="1h", htf="4h")
+        return breakout.signal(asset, tf="4h", htf="1d")
 
     def _itbv(self, asset: str) -> dict:
         """Gold brain: the full Market Read — institutional TIME × BetterVolume,
