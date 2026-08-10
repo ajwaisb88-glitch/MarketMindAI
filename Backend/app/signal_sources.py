@@ -108,25 +108,29 @@ class MarketMindSource(SignalSource):
         return self._crypto_confluence(asset)
 
     def _itbv(self, asset: str) -> dict:
-        """Gold brain: institutional TIME decides WHEN, BetterVolume decides WHAT.
-        Only trades inside a tradeable institutional window with a BV footprint."""
-        import numpy as np
-
-        from . import itbv
-        bars = _monster_bars("M15", asset)          # MT5 tick-volume for gold, else Binance PAXG
-        r = itbv.signal_for(asset, bars)
-        out = {"source": self.key, "engine": "Time × BetterVolume", "asset": asset,
-               "direction": r["direction"], "grade": r["grade"],
-               "window": r.get("window_label"), "behavior": r.get("behavior"),
-               "bv_color": r.get("bv_color"), "liquidity": r.get("liquidity"),
-               "timeframe": "M15", "story": r.get("reason"),
-               "entry": None, "stop_loss": None, "take_profit": None, "risk_reward": None}
-        if r["direction"] in ("BUY", "SELL") and bars:
-            closes = np.array([b["c"] for b in bars], float)
-            highs = np.array([b["h"] for b in bars], float)
-            lows = np.array([b["l"] for b in bars], float)
-            out.update(_atr_plan(r["direction"], float(closes[-1]), strat.atr(highs, lows, closes)))
-        return out
+        """Gold brain: the full Market Read — institutional TIME × BetterVolume,
+        confirmed by the live order-book (DOM) imbalance + order-flow CVD + taker
+        pressure, with a multi-timeframe pinpoint entry (M5/M1). Only fires on a
+        genuine multi-factor agreement inside a prime window."""
+        from . import market_read
+        d = market_read.read(asset)
+        if d.get("status") != "ok":
+            return {"source": self.key, "engine": "Market Read", "asset": asset,
+                    "direction": "NONE", "grade": "-", "story": d.get("message", "no data")}
+        actionable = d["tradeable"]
+        e = d.get("entry") or {}
+        return {"source": self.key, "engine": "Market Read · flow+DOM+BV×time · MTF entry",
+                "asset": asset, "direction": d["direction"] if actionable else "NONE",
+                "grade": d["grade"], "confidence": d["confidence"], "bias": d["bias"],
+                "window": d["window"]["label"], "behavior": d["window"]["behavior"],
+                "bv_color": d["layers"]["bettervolume"]["color"],
+                "timeframes": d["timeframes"], "layers": d["layers"],
+                "entry": e.get("entry") if actionable else None,
+                "stop_loss": e.get("stop_loss") if actionable else None,
+                "take_profit": e.get("tp3") if actionable else None,
+                "tp1": e.get("tp1"), "tp2": e.get("tp2"),
+                "risk_reward": e.get("risk_reward") if actionable else None,
+                "story": d["reason"]}
 
     def _crypto_confluence(self, asset: str) -> Optional[dict]:
         from .strategies import intraday_signal

@@ -8,9 +8,11 @@ import Performance from './Performance';
 import NewsRadar from './NewsRadar';
 import Confluence from './Confluence';
 import Sessions from './Sessions';
+import MarketRead from './MarketRead';
 
 const TABS = [
   { key: 'signals', label: '🚨 Signals' },
+  { key: 'read', label: '📐 Read' },
   { key: 'confluence', label: '👹 Confluence' },
   { key: 'sessions', label: '🕐 Sessions' },
   { key: 'performance', label: '📊 Performance' },
@@ -201,6 +203,7 @@ export default function App() {
         )}
         {/* ── Signals / Money Flow / Watchlist / Radar pages ── */}
         {tab === 'signals' && <Signals apiBase={apiBase} />}
+        {tab === 'read' && <MarketRead apiBase={apiBase} />}
         {tab === 'confluence' && <Confluence apiBase={apiBase} />}
         {tab === 'sessions' && <Sessions apiBase={apiBase} />}
         {tab === 'performance' && <Performance apiBase={apiBase} />}

@@ -637,6 +637,15 @@ async def sessions_timing():
     return sessions.get_sessions()
 
 
+@app.get("/market/read")
+async def market_read_endpoint(asset: str = "gold"):
+    """The full mathematical picture for an asset: HTF trend + BetterVolume +
+    order-book imbalance (DOM) + order-flow CVD + taker pressure, fused into one
+    bias, gated by institutional time, with a multi-timeframe pinpoint entry."""
+    from app import market_read
+    return market_read.read(asset)
+
+
 @app.get("/backtest/itbv")
 async def backtest_itbv(asset: str = "gold", limit: int = 4000,
                         balance: float = 10000.0, risk_pct: float = 1.0):
