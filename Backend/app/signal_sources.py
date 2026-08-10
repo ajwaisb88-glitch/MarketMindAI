@@ -94,8 +94,8 @@ _GOLD_ASSETS = {"gold", "xauusd", "xauusdt", "paxg", "silver", "xagusd"}
 
 class MarketMindSource(SignalSource):
     key, name = "marketmind", "MarketMind"
-    description = "Gold: Institutional Time × BetterVolume · Crypto: 15m→4h confluence"
-    engine = "Time × BetterVolume (gold) / 15m·1h·4h (crypto)"
+    description = "Gold: Market Read (flow+DOM+BV×time) · Crypto: daily swing (SMA-trend + 4h)"
+    engine = "Market Read (gold) / Swing (crypto)"
 
     # Minimum 15-minute base up to higher timeframes — NO sub-15m scalp. This is
     # what stops the signal from flipping every second: it only fires when 15m,
@@ -133,45 +133,47 @@ class MarketMindSource(SignalSource):
                 "story": d["reason"]}
 
     def _crypto_confluence(self, asset: str) -> Optional[dict]:
-        from .strategies import intraday_signal
+        """Crypto = SWING only. The old 15m-based scalps got stopped out constantly
+        (1 win / 10 losses live), so crypto now trades the DAILY trend confirmed by
+        4h, with wide swing stops (3× ATR) — far fewer signals, far fewer SL hits.
+
+        Rule: 1d SMA50/200 + momentum sets the swing direction; 4h must agree.
+        A+ only when the daily and 4h line up; otherwise no trade (gated out)."""
+        from .strategies import intraday_signal, longterm_signal
         from .crypto_signals import CryptoSignalService
         svc = CryptoSignalService()
 
-        legs: dict[str, dict] = {}
-        for tf in self._TFS:
-            o = svc._ohlc(asset, tf, 300)
-            if o is not None:
-                legs[tf] = intraday_signal(*o).as_dict()
+        d1 = svc._ohlc(asset, "1d", 300)        # daily swing engine (wide 3xATR stop)
+        h4 = svc._ohlc(asset, "4h", 300)        # 4h confirmation
+        h1 = svc._ohlc(asset, "1h", 300)        # context only
+        if d1 is None:
+            return {"source": self.key, "engine": self.engine, "asset": asset,
+                    "direction": "NONE", "grade": "-", "story": "No daily data yet.",
+                    "entry": None, "stop_loss": None, "take_profit": None, "risk_reward": None}
 
-        base = legs.get("15m")
-        tf_view = {tf: (legs[tf]["direction"] if tf in legs else "n/a") for tf in self._TFS}
-        if not base:
+        swing = longterm_signal(*d1).as_dict()  # direction long/short/flat + wide stop/target
+        h4_dir = intraday_signal(*h4).as_dict()["direction"] if h4 is not None else "flat"
+        h1_dir = intraday_signal(*h1).as_dict()["direction"] if h1 is not None else "flat"
+        tf_view = {"1h": h1_dir, "4h": h4_dir, "1d": swing["direction"]}
+
+        swing_dir = swing["direction"]
+        if swing_dir not in ("long", "short"):
             return {"source": self.key, "engine": self.engine, "asset": asset,
                     "direction": "NONE", "grade": "-", "timeframes": tf_view,
-                    "story": "No 15m data yet.", "entry": None, "stop_loss": None,
-                    "take_profit": None, "risk_reward": None}
+                    "story": "Daily trend is flat — no swing to trade. Waiting for a clean daily trend.",
+                    "entry": None, "stop_loss": None, "take_profit": None, "risk_reward": None}
 
-        base_dir = base["direction"]            # long / short / flat
-        if base_dir not in ("long", "short"):
-            return {"source": self.key, "engine": self.engine, "asset": asset,
-                    "direction": "NONE", "grade": "-", "timeframes": tf_view,
-                    "story": "15m is flat — no trend to trade.", "entry": None,
-                    "stop_loss": None, "take_profit": None, "risk_reward": None}
-
-        # how many of 15m/1h/4h agree with the 15m direction (the confluence gate)
-        agree = [tf for tf in self._TFS if legs.get(tf, {}).get("direction") == base_dir]
-        n = len(agree)
-        grade = "A+" if n == 3 else "A1" if n == 2 else "A"
-        direction = "SELL" if base_dir == "short" else "BUY"
-        higher = ", ".join(t for t in ("1h", "4h") if t in agree) or "none"
-        story = (f"{n}/3 timeframes aligned {direction} (15m entry, confirmed by {higher}). "
-                 f"A+ needs all three — 15m·1h·4h — pointing the same way.")
-
-        return {"source": self.key, "engine": self.engine, "asset": asset,
+        direction = "SELL" if swing_dir == "short" else "BUY"
+        confirmed = h4_dir == swing_dir
+        grade = "A+" if confirmed else "A"      # A+ only when 4h confirms the daily swing
+        story = (f"SWING {direction}: daily SMA-trend {'confirmed by' if confirmed else 'NOT yet confirmed by'} "
+                 f"4h ({h4_dir}). Wide multi-day stop (3× ATR); target 2R. "
+                 f"{'Elite swing setup.' if confirmed else 'Wait for 4h to align.'}")
+        return {"source": self.key, "engine": "Swing · daily SMA-trend + 4h confirm", "asset": asset,
                 "direction": direction, "grade": grade,
-                "entry": base["entry"], "stop_loss": base["stop_loss"],
-                "take_profit": base["take_profit"], "risk_reward": base["risk_reward"],
-                "timeframes": tf_view, "agree": n, "story": story}
+                "entry": swing["entry"], "stop_loss": swing["stop_loss"],
+                "take_profit": swing["take_profit"], "risk_reward": swing["risk_reward"],
+                "timeframes": tf_view, "trade_type": "swing", "story": story}
 
 
 class WhaleSource(SignalSource):
