@@ -75,7 +75,7 @@ def footer(canvas, doc):
     canvas.setFillColor(DIM)
     canvas.drawString(20 * mm, 10 * mm, "MarketMind AI")
     canvas.drawRightString(190 * mm, 10 * mm, f"Page {doc.page}")
-    canvas.drawCentredString(105 * mm, 10 * mm, "Signals, not advice — trade your own account, your own risk.")
+    canvas.drawCentredString(105 * mm, 10 * mm, "MarketMind AI · by Malik Muhammad Naveed · +92 343 3333344 · +92 300 5009379")
     canvas.restoreState()
 
 
@@ -293,6 +293,11 @@ def installation_guide():
     s.append(Spacer(1, 6))
     s.append(Paragraph("Signals are analysis, not financial advice. Start on a demo account and trade your own "
                        "account at your own risk.", WARN))
+    s.append(Paragraph("Support &amp; keys", H2))
+    s.append(infobox([
+        ("Author", "Malik Muhammad Naveed"),
+        ("Contact", "+92 343 3333344 &nbsp; / &nbsp; +92 300 5009379"),
+    ]))
     build(f"{OUT_DIR}/MarketMind-AI-Installation-Guide.pdf", s)
 
 

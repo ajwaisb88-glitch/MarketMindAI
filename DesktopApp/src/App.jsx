@@ -188,6 +188,7 @@ export default function App() {
         <div className="header-title">
           <span className="logo">📈</span>
           <span>MarketMind AI</span>
+          <span className="header-author">by Malik Muhammad Naveed</span>
         </div>
         <div className="backend-badge" style={{ borderColor: statusColor, color: statusColor }}>
           ● Backend {backendStatus}

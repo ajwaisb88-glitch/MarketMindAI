@@ -49,7 +49,11 @@ export default function License({ apiBase, status, onActivated }) {
           <code>{status?.machine_id || '—'}</code>
           <span className="lic-hint">Give this to the seller if your key is machine-locked.</span>
         </div>
-        <div className="lic-foot">No key? Contact whoever sold you MarketMind AI to get one.</div>
+        <div className="lic-foot">
+          Need a key? Contact the author:<br />
+          <b>Malik Muhammad Naveed</b><br />
+          +92 343 3333344 &nbsp;·&nbsp; +92 300 5009379
+        </div>
       </div>
     </div>
   );
