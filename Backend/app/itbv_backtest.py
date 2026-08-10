@@ -55,7 +55,7 @@ def _fetch_bars(bc: BinanceConnector, asset: str, interval: str, total: int) -> 
     return out[-total:]
 
 
-def run(asset: str = "gold", limit: int = 4000) -> dict:
+def run(asset: str = "gold", limit: int = 4000, balance: float = 10000.0, risk_pct: float = 1.0) -> dict:
     bc = BinanceConnector()
     k = _fetch_bars(bc, asset, "15m", min(limit, 6000))
     if not k or len(k) < _WARMUP + 20:
@@ -98,7 +98,7 @@ def run(asset: str = "gold", limit: int = 4000) -> dict:
                        "outcome": outcome, "r": round(rmult, 2)})
         i = exit_j + 1                        # one position at a time
 
-    return _aggregate(asset, len(k), trades)
+    return _aggregate(asset, len(k), trades, balance, risk_pct)
 
 
 def _bucket():
@@ -115,9 +115,11 @@ def _finalize(b):
     return b
 
 
-def _aggregate(asset, n_bars, trades):
+def _aggregate(asset, n_bars, trades, balance=10000.0, risk_pct=1.0):
     overall, by_session, by_color = _bucket(), {}, {}
-    equity, peak, max_dd = 0.0, 0.0, 0.0
+    r_equity, r_peak, max_dd_r = 0.0, 0.0, 0.0
+    # money curve: risk a fixed % of CURRENT equity per trade (compounding).
+    money, m_peak, max_dd_money = float(balance), float(balance), 0.0
     for tr in trades:
         r = tr["r"]
         for b in (overall, by_session.setdefault(tr["window_label"], _bucket()),
@@ -128,10 +130,19 @@ def _aggregate(asset, n_bars, trades):
                 b["wins"] += 1; b["gross_win"] += r
             elif r < 0:
                 b["losses"] += 1; b["gross_loss"] += abs(r)
-        equity += r; peak = max(peak, equity); max_dd = max(max_dd, peak - equity)
+        r_equity += r; r_peak = max(r_peak, r_equity); max_dd_r = max(max_dd_r, r_peak - r_equity)
+        money += r * (money * risk_pct / 100.0)             # profit/loss in dollars
+        m_peak = max(m_peak, money); max_dd_money = max(max_dd_money, (m_peak - money) / m_peak * 100)
+
+    net_profit = money - balance
+    return_pct = (money / balance - 1.0) * 100.0 if balance else 0.0
     return {
         "status": "ok", "asset": asset, "bars": n_bars, "days": round(n_bars * 15 / 60 / 24, 1),
-        "overall": _finalize(overall), "max_drawdown_r": round(max_dd, 2),
+        "overall": _finalize(overall), "max_drawdown_r": round(max_dd_r, 2),
+        # return vs profit — the money view (start balance, % risk per trade, compounding)
+        "money": {"start_balance": round(balance, 2), "risk_pct": risk_pct,
+                  "end_balance": round(money, 2), "net_profit": round(net_profit, 2),
+                  "return_pct": round(return_pct, 1), "max_drawdown_pct": round(max_dd_money, 1)},
         "by_session": {k: _finalize(v) for k, v in sorted(by_session.items(), key=lambda x: -x[1]["net_r"])},
         "by_color": {k: _finalize(v) for k, v in sorted(by_color.items(), key=lambda x: -x[1]["net_r"])},
         "params": {"rr": _RR, "k_stop": _K_STOP, "max_hold_bars": _MAX_HOLD, "timeframe": "15m"},

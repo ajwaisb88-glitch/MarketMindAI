@@ -75,6 +75,14 @@
 .ss-tile { background: #0b1119; border: 1px solid var(--ss-line); border-radius: 9px; padding: 9px 10px; text-align: center; }
 .ss-tile .k { display: block; font-size: 9px; letter-spacing: .5px; color: var(--ss-dim); text-transform: uppercase; }
 .ss-tile .v { display: block; font-size: 19px; font-weight: 800; margin-top: 3px; }
+.ss-money { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px;
+  border: 1px solid #2ea04326; border-radius: 9px; background: linear-gradient(90deg, #08140d, #0b1119 70%); }
+.ss-money-lead { font-size: 11px; color: var(--ss-dim); letter-spacing: .3px; }
+.ss-money-item { display: flex; flex-direction: column; }
+.ss-money-item .k { font-size: 8.5px; letter-spacing: .5px; color: var(--ss-dim); text-transform: uppercase; }
+.ss-money-item b { font-size: 17px; font-weight: 800; }
+.ss-money-note { font-family: system-ui, sans-serif; font-size: 10.5px; color: #5b6675; margin-bottom: 12px; line-height: 1.5; }
+
 .ss-bt-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 720px) { .ss-bt-cols { grid-template-columns: 1fr; } }
 .ss-bt-k { font-size: 10px; letter-spacing: 1px; color: #58a6ff; font-weight: 700; margin-bottom: 6px; }

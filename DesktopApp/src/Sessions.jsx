@@ -139,9 +139,21 @@ export default function Sessions({ apiBase }) {
                   <div className="ss-tile"><span className="k">Trades</span><span className="v">{bt.overall.trades}</span></div>
                   <div className="ss-tile"><span className="k">Win rate</span><span className="v" style={{ color: (bt.overall.win_rate || 0) >= 50 ? '#3fb950' : '#e3b341' }}>{bt.overall.win_rate ?? '—'}%</span></div>
                   <div className="ss-tile"><span className="k">Profit factor</span><span className="v" style={{ color: pfColor(bt.overall.profit_factor) }}>{bt.overall.profit_factor ?? '—'}</span></div>
-                  <div className="ss-tile"><span className="k">Net</span><span className="v" style={{ color: bt.overall.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{bt.overall.net_r > 0 ? '+' : ''}{bt.overall.net_r}R</span></div>
+                  <div className="ss-tile"><span className="k">Net (risk units)</span><span className="v" style={{ color: bt.overall.net_r >= 0 ? '#3fb950' : '#ff7b72' }}>{bt.overall.net_r > 0 ? '+' : ''}{bt.overall.net_r}R</span></div>
                   <div className="ss-tile"><span className="k">Max DD</span><span className="v" style={{ color: '#ff9b95' }}>-{bt.max_drawdown_r}R</span></div>
                 </div>
+                {bt.money && (
+                  <div className="ss-money">
+                    <span className="ss-money-lead">${bt.money.start_balance.toLocaleString()} · risk {bt.money.risk_pct}%/trade →</span>
+                    <span className="ss-money-item"><span className="k">Return</span>
+                      <b style={{ color: bt.money.return_pct >= 0 ? '#3fb950' : '#ff7b72' }}>{bt.money.return_pct >= 0 ? '+' : ''}{bt.money.return_pct}%</b></span>
+                    <span className="ss-money-item"><span className="k">Net profit</span>
+                      <b style={{ color: bt.money.net_profit >= 0 ? '#3fb950' : '#ff7b72' }}>{bt.money.net_profit >= 0 ? '+$' : '-$'}{Math.abs(bt.money.net_profit).toLocaleString()}</b></span>
+                    <span className="ss-money-item"><span className="k">End balance</span><b>${bt.money.end_balance.toLocaleString()}</b></span>
+                    <span className="ss-money-item"><span className="k">Max DD</span><b style={{ color: '#ff9b95' }}>-{bt.money.max_drawdown_pct}%</b></span>
+                  </div>
+                )}
+                <div className="ss-money-note">Return = % gain on capital · Profit = the dollars. Backtest runs on live rolling history, so numbers move as new bars print — the edge is thin, treat it as research not a promise.</div>
                 <div className="ss-bt-cols">
                   <div className="ss-bt-break">
                     <div className="ss-bt-k">BY SESSION</div>
