@@ -19,6 +19,14 @@ function startBundledBackend() {
   backendProcess = spawn(executable, ['--host', '127.0.0.1', '--port', '8000'], {
     windowsHide: true,
     stdio: 'ignore',
+    env: {
+      ...process.env,
+      // Packaged product: require a valid license key, and keep the activated key
+      // in the per-user data folder so it persists and survives updates.
+      MARKETMIND_REQUIRE_LICENSE: '1',
+      MARKETMIND_LICENSE_FILE: path.join(app.getPath('userData'), 'license.key'),
+      MARKETMIND_LIVE_PRICES: '1',
+    },
   });
   backendProcess.on('error', (error) => console.error('Unable to start MarketMind backend:', error));
   backendProcess.on('exit', () => { backendProcess = null; });

@@ -62,6 +62,11 @@ export default function Performance({ apiBase }) {
       <div className="pf-bar">
         <div className="pf-brand"><span>📊</span>SIGNAL <b>PERFORMANCE</b></div>
         <div className="pf-sub">Live-forward — every signal graded against real prices. Not simulated.</div>
+        <button className="pf-refresh" onClick={async () => {
+          if (!window.confirm('Clear all performance history and start fresh?')) return;
+          try { await fetch(`${apiBase}/signals/performance/reset`, { method: 'POST' }); } catch (e) { /* ignore */ }
+          load();
+        }}>Reset</button>
         <button className="pf-refresh" onClick={load} disabled={loading}>{loading ? '…' : '↻ Refresh'}</button>
       </div>
 

@@ -237,5 +237,65 @@ def author_guide():
     build(f"{OUT_DIR}/MarketMind-AI-Owner-Guide.pdf", s)
 
 
+def installation_guide():
+    s = []
+    s += brandbar("MarketMind AI — Installation Guide",
+                  "Get up and running in a few minutes. Windows 10/11.",
+                  "Install · Activate · Connect MetaTrader 5")
+
+    s.append(Paragraph("What you need", H2))
+    s.append(infobox([
+        ("Windows PC", "Windows 10 or 11, 64-bit. ~1 GB free disk."),
+        ("Internet", "Required — live crypto (Binance), money-flow and session data."),
+        ("License key", "The key you were given by the seller. You activate it on first launch."),
+        ("MetaTrader 5", "Needed for real gold/forex signals & auto-trading. Free from your broker."),
+    ]))
+
+    s.append(Paragraph("Step 1 — Install the app", H2))
+    s.append(bullets([
+        "Unzip the folder you received (right-click &rarr; Extract All).",
+        "Open the <b>App</b> folder and double-click <b>MarketMind AI.exe</b>.",
+        "If Windows shows &ldquo;unknown publisher&rdquo;, click <b>More info &rarr; Run anyway</b> "
+        "(the app is unsigned — that is normal for a direct-sale build).",
+        "First launch takes ~15–30 seconds while the engine starts.",
+    ]))
+
+    s.append(Paragraph("Step 2 — Activate your license key", H2))
+    s.append(bullets([
+        "On first launch you&rsquo;ll see the <b>Activate</b> screen.",
+        "Paste the <b>license key</b> the seller gave you and click <b>Activate</b>.",
+        "That&rsquo;s it — the key is saved on this PC, so you won&rsquo;t need to enter it again.",
+        "If your key is <b>machine-locked</b>, send the seller the <b>machine ID</b> shown on that screen and "
+        "they&rsquo;ll issue a key bound to your PC.",
+    ]))
+    s.append(Paragraph("Keys have an expiry date. When it lapses, the Activate screen returns — "
+                       "paste a renewed key to continue.", NOTE))
+
+    s.append(Paragraph("Step 3 — Connect MetaTrader 5 (for gold &amp; forex)", H2))
+    s.append(Paragraph("The app runs without MT5 (crypto + a live gold proxy still work), but for real "
+                       "XAUUSD prices and auto-trading you need MetaTrader 5:", BODY))
+    s.append(bullets([
+        "Install <b>MetaTrader 5</b> from your broker&rsquo;s website and log in. "
+        "<b>Use a DEMO account to start</b> — prove the signals before risking real money.",
+        "Keep the MT5 terminal <b>open</b> while you use MarketMind AI.",
+        "To allow auto-trading, click the <b>AutoTrading</b> button in the MT5 toolbar so it turns green.",
+        "Nothing trades automatically unless you set a system to <b>Auto</b> in the app <i>and</i> AutoTrading is on.",
+    ]))
+
+    s.append(Paragraph("Step 4 — First look", H2))
+    s.append(bullets([
+        "<b>Signals</b> — the three systems; A+ setups only.",
+        "<b>Read</b> — the live market math for gold (order flow + order-book + volume × time) with a pinpoint entry.",
+        "<b>Sessions</b> — the Dubai-time clock; watch London open and the New York overlap.",
+        "<b>Performance</b> — the live scoreboard of how signals did (TP vs SL).",
+    ]))
+
+    s.append(Spacer(1, 6))
+    s.append(Paragraph("Signals are analysis, not financial advice. Start on a demo account and trade your own "
+                       "account at your own risk.", WARN))
+    build(f"{OUT_DIR}/MarketMind-AI-Installation-Guide.pdf", s)
+
+
 user_guide()
 author_guide()
+installation_guide()

@@ -9,6 +9,7 @@ import NewsRadar from './NewsRadar';
 import Confluence from './Confluence';
 import Sessions from './Sessions';
 import MarketRead from './MarketRead';
+import License from './License';
 
 const TABS = [
   { key: 'signals', label: '🚨 Signals' },
@@ -76,6 +77,7 @@ export default function App() {
   const [intervalSec, setIntervalSec] = useState(30);
   const [history, setHistory] = useState(loadHistory);
   const [backendStatus, setBackendStatus] = useState('unknown');
+  const [license, setLicense] = useState(null);   // null = checking
   const [apiSettings, setApiSettings] = useState(loadApiSettings);
   const [showSettings, setShowSettings] = useState(false);
   const [backendInfo, setBackendInfo] = useState(null);
@@ -125,6 +127,22 @@ export default function App() {
     return () => clearInterval(timer);
   }, [refreshBackendHealth]);
 
+  // License check — retry until the backend answers, then gate the app if a key
+  // is required and not yet active.
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      if (!alive) return;
+      try {
+        const r = await fetch(`${apiBase}/license`);
+        if (r.ok && alive) { setLicense(await r.json()); return; }
+      } catch { /* backend not up yet */ }
+      if (alive) setTimeout(check, 2500);
+    };
+    check();
+    return () => { alive = false; };
+  }, [apiBase]);
+
   useEffect(() => {
     window.marketmind?.getBackendInfo?.().then(setBackendInfo).catch(() => {});
   }, []);
@@ -157,6 +175,12 @@ export default function App() {
   };
 
   const statusColor = { online: '#3fb950', offline: '#f85149', error: '#e3b341', checking: '#e3b341', unknown: '#8b949e' }[backendStatus];
+
+  // License gate — block the whole app until a required key is activated.
+  if (license && license.required && !license.valid) {
+    return <License apiBase={apiBase} status={license}
+      onActivated={(d) => setLicense({ ...license, ...d })} />;
+  }
 
   return (
     <div className="app">

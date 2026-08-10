@@ -28,11 +28,11 @@ from typing import Optional
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-# ── The product's PUBLIC key (hex). Replace with your own from license_gen keygen.
-# This placeholder is a real, published test key — regenerate before selling.
+# ── The product's PUBLIC key (hex). Verifies owner-issued keys offline; the
+# matching PRIVATE key lives only in the owner's key generator, never here.
 PUBLIC_KEY_HEX = os.getenv(
     "MARKETMIND_LICENSE_PUBKEY",
-    "3b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
+    "13cc3e41166feeb6cfd6b087d7b93ed813b5a34e141205b44d28a460a5b0dee0",
 )
 
 # Require a valid license? Off in dev so the app runs; the product build sets it on.
@@ -117,6 +117,24 @@ def _read_license() -> str:
         except Exception:
             pass
     return ""
+
+
+def _license_path() -> str:
+    """Where an activated key is stored so it persists across launches."""
+    return os.getenv("MARKETMIND_LICENSE_FILE",
+                     os.path.join(os.path.dirname(__file__), "..", "license.key"))
+
+
+def activate(key: str) -> LicenseStatus:
+    """Verify a pasted key and, if valid, save it so the app stays unlocked."""
+    st = verify_key((key or "").strip())
+    if st.valid:
+        try:
+            with open(_license_path(), "w", encoding="utf-8") as f:
+                f.write(key.strip())
+        except Exception as exc:  # noqa: BLE001
+            return LicenseStatus(False, f"key is valid but could not be saved: {exc}")
+    return st
 
 
 def current_status() -> LicenseStatus:

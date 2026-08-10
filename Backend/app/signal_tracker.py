@@ -24,6 +24,9 @@ from .connectors.binance import SYMBOL_MAP, BinanceConnector
 logger = logging.getLogger("marketmind.tracker")
 
 _PERF_FILE = os.getenv("MARKETMIND_PERF_FILE", "signal_performance.json")
+# Bump when the signal logic changes so the Performance page only shows results
+# from the CURRENT engine — old signals from a retired logic are hidden.
+_ENGINE_VERSION = "3-swing-marketread"
 _MAX_ROWS = 400
 _OPEN_TTL_SEC = 7 * 24 * 3600      # a signal still open after 7d is marked stale
 _lock = threading.Lock()
@@ -102,6 +105,7 @@ def record(signals: dict, asset: str) -> None:
                 "stop_loss": round(float(sl), 6), "take_profit": round(float(tp), 6),
                 "tier": sig.get("tier"), "ts": time.time(), "status": "OPEN",
                 "exit_price": None, "closed_ts": None, "r_multiple": None,
+                "v": _ENGINE_VERSION,
             })
             open_ids.add(sid)
             added = True
@@ -142,11 +146,18 @@ def update_outcomes() -> None:
             _save(rows)
 
 
+def reset() -> dict:
+    """Clear the whole performance log (owner action)."""
+    with _lock:
+        _save([])
+    return {"ok": True, "tracked": 0}
+
+
 def stats() -> dict:
     """Per-system scoreboard + recent rows. Updates outcomes first."""
     update_outcomes()
     with _lock:
-        rows = _load()
+        rows = [r for r in _load() if r.get("v") == _ENGINE_VERSION]   # current engine only
     by: dict[str, dict] = {}
     for r in rows:
         s = by.setdefault(r["source"], {"source": r["source"], "total": 0, "open": 0,

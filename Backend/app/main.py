@@ -5,8 +5,9 @@ from functools import lru_cache
 from typing import Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app import backtest as backtest_mod
 from app import quant
@@ -74,6 +75,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── License gate: when licensing is required and the app isn't activated, every
+# feature endpoint returns 402 so the UI shows the activation screen. Health and
+# the license routes stay open so the app can boot and be activated.
+_LICENSE_OPEN = {"/health", "/license", "/license/activate", "/docs", "/openapi.json"}
+
+
+@app.middleware("http")
+async def _license_gate(request: Request, call_next):
+    from app import licensing
+    path = request.url.path
+    if (licensing.REQUIRE_LICENSE and request.method != "OPTIONS"
+            and path not in _LICENSE_OPEN and not licensing.is_licensed()):
+        return JSONResponse(status_code=402,
+                            content={"detail": "license required", "license_required": True})
+    return await call_next(request)
 
 
 # ---------------------------------------------------------------------------
@@ -566,6 +583,15 @@ async def license_status():
     return s
 
 
+@app.post("/license/activate")
+async def license_activate(payload: dict = Body(...)):
+    """Activate a pasted license key (verifies + saves it so the app unlocks)."""
+    from app.licensing import activate, machine_id
+    s = activate(str(payload.get("key", ""))).as_dict()
+    s["machine_id"] = machine_id()
+    return s
+
+
 @app.get("/moneyflow")
 async def moneyflow(refresh: bool = False):
     """Global money flow tree: liquidity → currencies → asset classes → instruments,
@@ -618,6 +644,13 @@ async def signals_performance():
     real prices. Empty until signals fire and resolve — honest, not simulated."""
     from app import signal_tracker
     return signal_tracker.stats()
+
+
+@app.post("/signals/performance/reset")
+async def signals_performance_reset():
+    """Clear the performance history (start the scoreboard fresh)."""
+    from app import signal_tracker
+    return signal_tracker.reset()
 
 
 @app.get("/news")
